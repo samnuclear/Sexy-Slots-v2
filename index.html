@@ -206,6 +206,7 @@ header.rig .title{
       <div style="display:flex;gap:.5rem;align-items:center">
         <button class="btn" id="btnUpload">Upload</button>
         <button class="btn" id="btnRig">Rig</button>
+        <button class="btn" id="btnSync">Sync Repo Data</button>
       </div>
       <div class="small">Settings</div>
       <button class="btn" id="btnCloseSettings">Close</button>
@@ -300,8 +301,144 @@ function idbPut(id,blob){return new Promise((res,rej)=>{const tx=idb.transaction
 function idbGet(id){return new Promise((res,rej)=>{const tx=idb.transaction("images","readonly");const g=tx.objectStore("images").get(id);g.onsuccess=()=>res(g.result);g.onerror=()=>rej(g.error);});}
 function idbDel(id){return new Promise((res,rej)=>{const tx=idb.transaction("images","readwrite");tx.objectStore("images").delete(id);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});}
 
+/* ===== CSV + Repo Sync ===== */
+const CSV_PATH = 'data/positions.csv';
+const CSV_VER_KEY = 'ss_csv_version';
+
+function parseCSV(text){
+  // minimal RFC4180-ish parser supporting quotes and commas
+  const rows=[]; let i=0, f='', q=false, r=[];
+  for(; i<text.length; i++){
+    const c=text[i], n=text[i+1];
+    if(q){
+      if(c==='"' && n==='"'){ f+='"'; i++; }
+      else if(c==='"'){ q=false; }
+      else f+=c;
+    }else{
+      if(c===','){ r.push(f); f=''; }
+      else if(c==='"'){ q=true; }
+      else if(c==='\n'){ r.push(f); rows.push(r); r=[]; f=''; }
+      else if(c==='\r'){ /* ignore */ }
+      else f+=c;
+    }
+  }
+  if(f.length || r.length){ r.push(f); rows.push(r); }
+  // header map
+  if(!rows.length) return [];
+  const head=rows[0].map(h=>h.trim());
+  return rows.slice(1).filter(a=>a.length && a.some(x=>x && x.trim()!=='')).map(a=>{
+    const o={}; head.forEach((k,idx)=>o[k]=a[idx]!==undefined?a[idx].trim():''); return o;
+  });
+}
+
+async function fetchBlob(path){
+  const res = await fetch(path, {cache:'no-cache'});
+  if(!res.ok) throw new Error('HTTP '+res.status+' for '+path);
+  return await res.blob();
+}
+
+async function ensureSeedOnBoot(){
+  try{
+    // check DB emptiness quickly by trying a cursor
+    const tx=idb.transaction('images','readonly');
+    const req=tx.objectStore('images').openCursor();
+    const empty = await new Promise(res=>{
+      req.onsuccess=()=>res(!req.result);
+      req.onerror =()=>res(true);
+    });
+
+    const csvRes = await fetch(CSV_PATH, {cache:'no-cache'});
+    if(!csvRes.ok){ if(empty) console.warn('CSV missing and DB empty'); return; }
+    const csvText = await csvRes.text();
+    const rows = parseCSV(csvText);
+
+    // get highest CSV version
+    const ver = rows.reduce((m,o)=>Math.max(m, parseInt(o.version||'0',10)||0), 0);
+    const prev = parseInt(localStorage.getItem(CSV_VER_KEY)||'0',10)||0;
+
+    if(empty || ver>prev){
+      await syncFromRepo(rows, {showOverlay:false});
+      localStorage.setItem(CSV_VER_KEY, String(ver));
+    }
+  }catch(e){ console.warn('ensureSeedOnBoot:',e); }
+}
+
+async function syncFromRepo(prefetchedRows=null, opts={showOverlay:true}){
+  try{
+    let rows = prefetchedRows;
+    if(!rows){
+      const res = await fetch(CSV_PATH, {cache:'no-cache'});
+      if(!res.ok) throw new Error('CSV not found');
+      rows = parseCSV(await res.text());
+      const ver = rows.reduce((m,o)=>Math.max(m, parseInt(o.version||'0',10)||0), 0);
+      localStorage.setItem(CSV_VER_KEY, String(ver));
+    }
+
+    let overlay;
+    if(opts.showOverlay){
+      overlay = document.createElement('div');
+      overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;color:#fff;";
+      overlay.innerHTML=`<div style="background:#1c1c22;border:1px solid #2a2a36;padding:16px 18px;border-radius:12px;min-width:280px;text-align:center">
+        <div id="syncMsg">Syncing…</div>
+        <div style="height:8px;background:#2a2a36;border-radius:6px;overflow:hidden;margin-top:8px">
+          <div id="syncBar" style="height:100%;width:0;background:#e2b94b"></div>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+    }
+    const msg=()=>overlay?.querySelector('#syncMsg');
+    const bar=()=>overlay?.querySelector('#syncBar');
+
+    let done=0;
+    for(const row of rows){
+      done++; msg()&&(msg().textContent=`${done}/${rows.length} ${row.id||row.name||''}`);
+      bar()&&(bar().style.width=Math.round(done/rows.length*100)+'%');
+
+      const id = row.id || ('row-'+done);
+      // Merge rules: CSV wins if non-blank, else keep existing
+      const prev = meta[id] || {};
+      const merged = {
+        id,
+        name: row.name || prev.name || '',
+        category: row.category || prev.category || '',
+        difficulty: parseInt(row.difficulty||prev.difficulty||'3',10),
+        hero: parseInt(row.hero||prev.hero||'3',10),
+        hiso: parseInt(row.hiso||prev.hiso||'3',10),
+        weight: parseInt(row.weight||prev.weight||'1',10),
+        exclude: String(row.exclude||prev.exclude||'0')==='1',
+        desc: (row.desc!==undefined && row.desc!=='') ? row.desc : (prev.desc||'')
+      };
+      meta[id]=merged;
+
+      // Image: if we have nothing, or image path changed (store lastPath marker), refetch
+      const path = row.image||'';
+      if(path){
+        const needs = (!prev._lastPath) || (prev._lastPath!==path);
+        if(needs){
+          try{
+            const blob = await fetchBlob(path);
+            await idbPut(id, blob);
+            meta[id]._lastPath = path; // internal marker, not shown
+          }catch(e){
+            console.warn('image fetch failed for', id, path, e);
+          }
+        }
+      }
+      if(done % 5 === 0) await new Promise(r=>requestAnimationFrame(r));
+    }
+    saveMeta();
+    renderSettings(); renderWeights();
+    toast('Repo sync done');
+    overlay && overlay.remove();
+  }catch(e){
+    console.error('syncFromRepo',e);
+    toast('Repo sync failed');
+  }
+}
+
 /* ===== Upload (100+ with progress) ===== */
 $("#btnUpload").addEventListener("click",()=>{const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.multiple=true;inp.onchange=()=>{if(inp.files?.length) batchImport(Array.from(inp.files));};inp.click();});
+$("#btnSync")?.addEventListener("click",()=>syncFromRepo());
 function makeId(){try{return crypto.randomUUID();}catch{return Date.now()+"-"+Math.random().toString(16).slice(2);}}
 async function batchImport(files){
   const ov=document.createElement("div");ov.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;color:#fff;";
@@ -560,6 +697,7 @@ function toast(msg){const t=document.createElement('div'); t.className='toast'; 
 /* boot */
 (async function(){
   await openDB(); loadMeta(); loadState();
+  ensureSeedOnBoot();
   $("#oralPill").textContent=state.oralOnly?'ON':'OFF';
   $("#diffPill").textContent=pillLabel(state.difficulty);
   $("#herPill").textContent=pillLabel(state.herO);
