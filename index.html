@@ -332,9 +332,19 @@ function parseCSV(text){
 }
 
 async function fetchBlob(path){
-  const res = await fetch(path, {cache:'no-cache'});
-  if(!res.ok) throw new Error('HTTP '+res.status+' for '+path);
-  return await res.blob();
+  try{
+    const url = new URL(path, location.href).href;
+    const res = await fetch(url, {cache:'no-cache'});
+    if(!res.ok){
+      const err = new Error('HTTP '+res.status+' for '+url);
+      console.error('fetchBlob', err);
+      throw err;
+    }
+    return await res.blob();
+  }catch(e){
+    console.error('fetchBlob', e);
+    throw e;
+  }
 }
 
 async function ensureSeedOnBoot(){
@@ -367,11 +377,20 @@ async function syncFromRepo(prefetchedRows=null, opts={showOverlay:true}){
   try{
     let rows = prefetchedRows;
     if(!rows){
-      const res = await fetch(CSV_PATH, {cache:'no-cache'});
-      if(!res.ok) throw new Error('CSV not found');
-      rows = parseCSV(await res.text());
-      const ver = rows.reduce((m,o)=>Math.max(m, parseInt(o.version||'0',10)||0), 0);
-      localStorage.setItem(CSV_VER_KEY, String(ver));
+      try{
+        const res = await fetch(CSV_PATH, {cache:'no-cache'});
+        if(!res.ok){
+          const err = new Error('CSV not found');
+          console.error('syncFromRepo fetch CSV', err);
+          throw err;
+        }
+        rows = parseCSV(await res.text());
+        const ver = rows.reduce((m,o)=>Math.max(m, parseInt(o.version||'0',10)||0), 0);
+        localStorage.setItem(CSV_VER_KEY, String(ver));
+      }catch(e){
+        console.error('syncFromRepo fetch CSV', e);
+        throw e;
+      }
     }
 
     let overlay;
