@@ -1,12 +1,1 @@
-{
-  "name": "Sexy Slots (Beta)",
-  "short_name": "Slots Beta",
-  "start_url": "./",
-  "display": "standalone",
-  "background_color": "#0b0b0d",
-  "theme_color": "#0b0b0d",
-  "icons": [
-    { "src": "icons/icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any maskable" },
-    { "src": "Sexy_Slots_Icon_512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable any" }
-  ]
-}
+
