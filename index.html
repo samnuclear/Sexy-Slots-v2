@@ -10,7 +10,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0b0b0d">
 
 <style>
 :root{
@@ -19,14 +18,13 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{
-  height:100%; min-height:100vh; margin:0; padding-bottom:env(safe-area-inset-bottom);
-  background:radial-gradient(circle at top left,#1a1a22,var(--bg)); color:var(--text);
+  height:100%; margin:0; background:var(--bg); color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro",Roboto,system-ui,sans-serif;
   overflow:auto; touch-action:manipulation;
 }
 button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;touch-action:manipulation}
 input,select{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:.5em .7em;min-height:44px}
-.safe{height:calc(env(safe-area-inset-top) + 0.2cm)} /* snug per your last tweak */
+.safe{height:calc(env(safe-area-inset-top) + 0.2cm)}
 .hidden{display:none!important}
 
 /* header */
@@ -55,21 +53,19 @@ header.rig .title{
 
 /* controls */
 .controls{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;padding:.6rem}
-.ctrl{background:var(--panel2);border-radius:12px;min-height:44px;display:flex;align-items:center;justify-content:center;gap:.45rem;transition:background .2s,color .2s}
+.ctrl{background:var(--panel2);border-radius:12px;min-height:44px;display:flex;align-items:center;justify-content:center;gap:.45rem}
 .ctrl .pill{background:#2a2a36;border-radius:999px;padding:.05em .55em;font-size:12px;color:#ddd}
-.ctrl:hover{background:var(--panel)}
 .ctrl.active{background:var(--gold);color:#000}
 .spinwrap{padding:.3rem .6rem}
 #spin{
   width:100%; min-height:56px; border-radius:16px;
   background:linear-gradient(180deg,#ff5078 0%,#ff3b66 40%,#c50d40 100%);
   font-weight:900; letter-spacing:.35px; color:#fff;
-    box-shadow:0 10px 24px rgba(255,59,102,.25), inset 0 1px 0 rgba(255,255,255,.12);
-    position:relative; overflow:hidden; transition:transform .2s, box-shadow .2s;
-  }
-  #spin::before{content:""; position:absolute; inset:0; background:linear-gradient(180deg,rgba(255,255,255,.18),transparent 45%); pointer-events:none;}
-  #spin:hover{ transform:translateY(-1px); box-shadow:0 12px 28px rgba(255,59,102,.35), inset 0 1px 0 rgba(255,255,255,.18); }
-  #spin:active{ transform:translateY(1px); box-shadow:0 8px 16px rgba(255,59,102,.22), inset 0 1px 0 rgba(255,255,255,.05); }
+  box-shadow:0 10px 24px rgba(255,59,102,.25), inset 0 1px 0 rgba(255,255,255,.12);
+  position:relative; overflow:hidden;
+}
+#spin::before{content:""; position:absolute; inset:0; background:linear-gradient(180deg,rgba(255,255,255,.18),transparent 45%); pointer-events:none;}
+#spin:active{ transform:translateY(1px); box-shadow:0 8px 16px rgba(255,59,102,.22), inset 0 1px 0 rgba(255,255,255,.05); }
 #spin[disabled]{opacity:.4}
 
 /* reels */
@@ -146,10 +142,7 @@ header.rig .title{
 
 <div class="controls">
   <button class="ctrl" id="oralCtrl">Oral <span class="pill" id="oralPill">OFF</span></button>
-  <button class="ctrl" id="diffCtrl">Difficulty <span class="pill" id="diffPill">All</span></button>
-  <button class="ctrl hidden" id="catCtrl">Category <span class="pill" id="catPill">All</span></button>
-  <button class="ctrl" id="herCtrl">Her O <span class="pill" id="herPill">All</span></button>
-  <button class="ctrl" id="hisCtrl">His O <span class="pill" id="hisPill">All</span></button>
+  <button class="ctrl" id="catCtrl">Category <span class="pill" id="catPill">All</span></button>
   <button class="ctrl" id="timeCtrl">Timer <span class="pill" id="timePill">Off</span></button>
 </div>
 
@@ -206,7 +199,6 @@ header.rig .title{
       <div style="display:flex;gap:.5rem;align-items:center">
         <button class="btn" id="btnUpload">Upload</button>
         <button class="btn" id="btnRig">Rig</button>
-        <button class="btn" id="btnSync">Sync Repo Data</button>
       </div>
       <div class="small">Settings</div>
       <button class="btn" id="btnCloseSettings">Close</button>
@@ -217,13 +209,10 @@ header.rig .title{
         <button class="btn" id="fW0">Hide weight=0</button>
         <select id="bulkCat"></select>
         <button class="btn" id="bulkApply">Tap-to-Apply</button>
-      </div>
-      <div class="filters" id="filterToggles">
-        <label><input type="checkbox" id="chkDiff"> Difficulty</label>
-        <label><input type="checkbox" id="chkHer"> Her O</label>
-        <label><input type="checkbox" id="chkHis"> His O</label>
-        <label><input type="checkbox" id="chkCat"> Category</label>
-        <select id="setCat" class="hidden"></select>
+
+        <!-- Repo loader actions -->
+        <button class="btn" id="repoResetLoad" title="Clear local data then import from CSV">Reset & Load from CSV</button>
+        <button class="btn" id="repoMergeLoad" title="Merge CSV rows into current library">Reload from CSV (merge)</button>
       </div>
       <div class="grid" id="cards"></div>
     </div>
@@ -258,40 +247,13 @@ const ALL_CATS=["All","Unassigned",...CATS];
 const PIN="1616";
 const $=s=>document.querySelector(s); const $$=s=>Array.from(document.querySelectorAll(s));
 let idb; let meta={}; // id->{...}
-let state={
-  oralOnly:false,
-  category:"All",
-  difficulty:[],
-  herO:[],
-  hisO:[],
-  enableDiff:true,
-  enableHer:true,
-  enableHis:true,
-  enableCat:false,
-  timerMin:0,
-  rig:false,
-  flows:[[],[],[],[],[],[],[]],
-  flowIndex:0,
-  fCat:"All",
-  fW0:false,
-  bulkCat:"",
-  bulkMode:false
-};
+let state={oralOnly:false,category:"All",timerMin:0,rig:false,flows:[[],[],[],[],[],[],[]],flowIndex:0,fCat:"All",fW0:false,bulkCat:"",bulkMode:false};
 let currentId=null;
 const LSK="ss_meta_v1", LSS="ss_state_v1";
 function saveMeta(){localStorage.setItem(LSK,JSON.stringify(meta));}
 function loadMeta(){try{meta=JSON.parse(localStorage.getItem(LSK)||"{}");}catch{meta={};}}
 function saveState(){localStorage.setItem(LSS,JSON.stringify(state));$("#hdr").classList.toggle("rig",state.rig);}
-function loadState(){
-  try{Object.assign(state,JSON.parse(localStorage.getItem(LSS)||"{}"));}catch{}
-  ["difficulty","herO","hisO"].forEach(k=>{
-    const v=state[k];
-    if(Array.isArray(v)) return;
-    if(v===undefined||v===null||v==="All") state[k]=[];
-    else state[k]=[v];
-  });
-  $("#hdr").classList.toggle("rig",state.rig);
-}
+function loadState(){try{Object.assign(state,JSON.parse(localStorage.getItem(LSS)||"{}"));}catch{};$("#hdr").classList.toggle("rig",state.rig);}
 
 /* ===== IndexedDB ===== */
 function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open("SexySlotsDB",1);
@@ -301,163 +263,8 @@ function idbPut(id,blob){return new Promise((res,rej)=>{const tx=idb.transaction
 function idbGet(id){return new Promise((res,rej)=>{const tx=idb.transaction("images","readonly");const g=tx.objectStore("images").get(id);g.onsuccess=()=>res(g.result);g.onerror=()=>rej(g.error);});}
 function idbDel(id){return new Promise((res,rej)=>{const tx=idb.transaction("images","readwrite");tx.objectStore("images").delete(id);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});}
 
-/* ===== CSV + Repo Sync ===== */
-const CSV_PATH = 'data/positions.csv';
-const CSV_VER_KEY = 'ss_csv_version';
-
-function parseCSV(text){
-  // minimal RFC4180-ish parser supporting quotes and commas
-  const rows=[]; let i=0, f='', q=false, r=[];
-  for(; i<text.length; i++){
-    const c=text[i], n=text[i+1];
-    if(q){
-      if(c==='"' && n==='"'){ f+='"'; i++; }
-      else if(c==='"'){ q=false; }
-      else f+=c;
-    }else{
-      if(c===','){ r.push(f); f=''; }
-      else if(c==='"'){ q=true; }
-      else if(c==='\n'){ r.push(f); rows.push(r); r=[]; f=''; }
-      else if(c==='\r'){ /* ignore */ }
-      else f+=c;
-    }
-  }
-  if(f.length || r.length){ r.push(f); rows.push(r); }
-  // header map
-  if(!rows.length) return [];
-  const head=rows[0].map(h=>h.trim());
-  return rows.slice(1).filter(a=>a.length && a.some(x=>x && x.trim()!=='')).map(a=>{
-    const o={}; head.forEach((k,idx)=>o[k]=a[idx]!==undefined?a[idx].trim():''); return o;
-  });
-}
-
-async function fetchBlob(path){
-  try{
-    const url = new URL(path, location.href).href;
-    const res = await fetch(url, {cache:'no-cache'});
-    if(!res.ok){
-      const err = new Error('HTTP '+res.status+' for '+url);
-      console.error('fetchBlob', err);
-      throw err;
-    }
-    return await res.blob();
-  }catch(e){
-    console.error('fetchBlob', e);
-    throw e;
-  }
-}
-
-async function ensureSeedOnBoot(){
-  try{
-    // check DB emptiness quickly by trying a cursor
-    const tx=idb.transaction('images','readonly');
-    const req=tx.objectStore('images').openCursor();
-    const empty = await new Promise(res=>{
-      req.onsuccess=()=>res(!req.result);
-      req.onerror =()=>res(true);
-    });
-
-    const csvRes = await fetch(CSV_PATH, {cache:'no-cache'});
-    if(!csvRes.ok){ if(empty) console.warn('CSV missing and DB empty'); return; }
-    const csvText = await csvRes.text();
-    const rows = parseCSV(csvText);
-
-    // get highest CSV version
-    const ver = rows.reduce((m,o)=>Math.max(m, parseInt(o.version||'0',10)||0), 0);
-    const prev = parseInt(localStorage.getItem(CSV_VER_KEY)||'0',10)||0;
-
-    if(empty || ver>prev){
-      await syncFromRepo(rows, {showOverlay:false});
-      localStorage.setItem(CSV_VER_KEY, String(ver));
-    }
-  }catch(e){ console.warn('ensureSeedOnBoot:',e); }
-}
-
-async function syncFromRepo(prefetchedRows=null, opts={showOverlay:true}){
-  try{
-    let rows = prefetchedRows;
-    if(!rows){
-      try{
-        const res = await fetch(CSV_PATH, {cache:'no-cache'});
-        if(!res.ok){
-          const err = new Error('CSV not found');
-          console.error('syncFromRepo fetch CSV', err);
-          throw err;
-        }
-        rows = parseCSV(await res.text());
-        const ver = rows.reduce((m,o)=>Math.max(m, parseInt(o.version||'0',10)||0), 0);
-        localStorage.setItem(CSV_VER_KEY, String(ver));
-      }catch(e){
-        console.error('syncFromRepo fetch CSV', e);
-        throw e;
-      }
-    }
-
-    let overlay;
-    if(opts.showOverlay){
-      overlay = document.createElement('div');
-      overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;color:#fff;";
-      overlay.innerHTML=`<div style="background:#1c1c22;border:1px solid #2a2a36;padding:16px 18px;border-radius:12px;min-width:280px;text-align:center">
-        <div id="syncMsg">Syncing…</div>
-        <div style="height:8px;background:#2a2a36;border-radius:6px;overflow:hidden;margin-top:8px">
-          <div id="syncBar" style="height:100%;width:0;background:#e2b94b"></div>
-        </div>
-      </div>`;
-      document.body.appendChild(overlay);
-    }
-    const msg=()=>overlay?.querySelector('#syncMsg');
-    const bar=()=>overlay?.querySelector('#syncBar');
-
-    let done=0;
-    for(const row of rows){
-      done++; msg()&&(msg().textContent=`${done}/${rows.length} ${row.id||row.name||''}`);
-      bar()&&(bar().style.width=Math.round(done/rows.length*100)+'%');
-
-      const id = row.id || ('row-'+done);
-      // Merge rules: CSV wins if non-blank, else keep existing
-      const prev = meta[id] || {};
-      const merged = {
-        id,
-        name: row.name || prev.name || '',
-        category: row.category || prev.category || '',
-        difficulty: parseInt(row.difficulty||prev.difficulty||'3',10),
-        hero: parseInt(row.hero||prev.hero||'3',10),
-        hiso: parseInt(row.hiso||prev.hiso||'3',10),
-        weight: parseInt(row.weight||prev.weight||'1',10),
-        exclude: String(row.exclude||prev.exclude||'0')==='1',
-        desc: (row.desc!==undefined && row.desc!=='') ? row.desc : (prev.desc||'')
-      };
-      meta[id]=merged;
-
-      // Image: if we have nothing, or image path changed (store lastPath marker), refetch
-      const path = row.image||'';
-      if(path){
-        const needs = (!prev._lastPath) || (prev._lastPath!==path);
-        if(needs){
-          try{
-            const blob = await fetchBlob(path);
-            await idbPut(id, blob);
-            meta[id]._lastPath = path; // internal marker, not shown
-          }catch(e){
-            console.warn('image fetch failed for', id, path, e);
-          }
-        }
-      }
-      if(done % 5 === 0) await new Promise(r=>requestAnimationFrame(r));
-    }
-    saveMeta();
-    renderSettings(); renderWeights();
-    toast('Repo sync done');
-    overlay && overlay.remove();
-  }catch(e){
-    console.error('syncFromRepo',e);
-    toast('Repo sync failed');
-  }
-}
-
 /* ===== Upload (100+ with progress) ===== */
 $("#btnUpload").addEventListener("click",()=>{const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.multiple=true;inp.onchange=()=>{if(inp.files?.length) batchImport(Array.from(inp.files));};inp.click();});
-$("#btnSync")?.addEventListener("click",()=>syncFromRepo());
 function makeId(){try{return crypto.randomUUID();}catch{return Date.now()+"-"+Math.random().toString(16).slice(2);}}
 async function batchImport(files){
   const ov=document.createElement("div");ov.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;color:#fff;";
@@ -482,35 +289,12 @@ async function batchImport(files){
 /* ===== Settings & Filters ===== */
 $("#btnSettings").addEventListener("click",openSettings);
 $("#btnCloseSettings").addEventListener("click",()=>$("#settings").classList.remove("show"));
-function openSettings(){
-  $("#settings").classList.add("show");
-  fillSelect($("#fCat"),ALL_CATS,state.fCat);
-  $("#fW0").classList.toggle("active",state.fW0);
-  fillSelect($("#bulkCat"),["",...CATS],state.bulkCat);
-  fillSelect($("#setCat"),ALL_CATS,state.category);
-  $("#chkDiff").checked=state.enableDiff;
-  $("#chkHer").checked=state.enableHer;
-  $("#chkHis").checked=state.enableHis;
-  $("#chkCat").checked=state.enableCat;
-  $("#setCat").classList.toggle("hidden",!state.enableCat);
-  renderSettings();
-}
+function openSettings(){ $("#settings").classList.add("show"); fillSelect($("#fCat"),ALL_CATS,state.fCat); $("#fW0").classList.toggle("active",state.fW0); fillSelect($("#bulkCat"),["",...CATS],state.bulkCat); renderSettings(); }
 $("#fCat").addEventListener("change",e=>{state.fCat=e.target.value;saveState();renderSettings();});
 $("#fW0").addEventListener("click",()=>{state.fW0=!state.fW0;saveState();$("#fW0").classList.toggle("active",state.fW0);renderSettings();});
 $("#bulkCat").addEventListener("change",e=>{state.bulkCat=e.target.value;saveState();});
 $("#bulkApply").addEventListener("click",()=>{ if(!state.bulkMode){ if(!state.bulkCat){toast("Choose a category first");return;} state.bulkMode=true; saveState(); toast("Bulk ON: tap cards to assign"); } else { state.bulkMode=false; saveState(); toast("Bulk OFF"); } renderSettings(); });
 $("#cards").addEventListener("click",(e)=>{ if(!state.bulkMode) return; const card=e.target.closest(".card"); if(!card) return; const id=card.dataset.id; meta[id].category=state.bulkCat; saveMeta(); renderSettings(); renderWeights(); });
-function updateFilters(){
-  $("#diffCtrl").classList.toggle("hidden",!state.enableDiff);
-  $("#herCtrl").classList.toggle("hidden",!state.enableHer);
-  $("#hisCtrl").classList.toggle("hidden",!state.enableHis);
-  $("#catCtrl").classList.toggle("hidden",!state.enableCat);
-}
-$("#chkDiff").addEventListener("change",e=>{state.enableDiff=e.target.checked;saveState();updateFilters();});
-$("#chkHer").addEventListener("change",e=>{state.enableHer=e.target.checked;saveState();updateFilters();});
-$("#chkHis").addEventListener("change",e=>{state.enableHis=e.target.checked;saveState();updateFilters();});
-$("#chkCat").addEventListener("change",e=>{state.enableCat=e.target.checked;saveState();$("#setCat").classList.toggle("hidden",!state.enableCat);updateFilters();});
-$("#setCat").addEventListener("change",e=>{state.category=e.target.value;$("#catPill").textContent=state.category;saveState();});
 
 function renderSettings(){
   const list=$("#cards"); list.innerHTML="";
@@ -526,7 +310,10 @@ function renderSettings(){
     const inc=el('div','inctgl'+(m.exclude?' off':''), m.exclude?'Excluded':'Included');
     inc.addEventListener('click',()=>{m.exclude=!m.exclude;saveMeta();renderSettings();renderWeights();});
     th.appendChild(inc); card.appendChild(th);
-    idbGet(m.id).then(r=>{if(r) img.src=URL.createObjectURL(r.blob);});
+    getStoredBlob(m.id).then(b=>{
+      if(b) img.src=URL.createObjectURL(b);
+      else{ const miss=document.createElement('div'); miss.className='catbadge'; miss.style.background='#71222a'; miss.style.color='#fff'; miss.textContent='Missing'; th.appendChild(miss); }
+    });
 
     const body=el('div','body');
     const name=el('input'); name.value=m.name; name.addEventListener('change',()=>{m.name=name.value.trim();saveMeta();renderWeights();}); body.append(labelRow('Name',name));
@@ -578,13 +365,8 @@ $("#spin").addEventListener("click",()=>{ if(!spinning && !timerId) spin(); });
 
 function poolNow(){ let arr=Object.values(meta).filter(m=>!m.exclude && (m.weight|0)>0);
   if(state.oralOnly) arr=arr.filter(m=>m.category==="Oral for Her"||m.category==="Oral for Him");
-  if(state.enableCat){
-    if(state.category==="Unassigned") arr=arr.filter(m=>!m.category);
-    else if(state.category!=="All") arr=arr.filter(m=>m.category===state.category);
-  }
-  if(state.enableDiff && state.difficulty.length) arr=arr.filter(m=>state.difficulty.includes(m.difficulty||0));
-  if(state.enableHer && state.herO.length) arr=arr.filter(m=>state.herO.includes(m.hero||0));
-  if(state.enableHis && state.hisO.length) arr=arr.filter(m=>state.hisO.includes(m.hiso||0));
+  if(state.category==="Unassigned") arr=arr.filter(m=>!m.category);
+  else if(state.category!=="All") arr=arr.filter(m=>m.category===state.category);
   return arr;
 }
 function weighted(arr){ const sum=arr.reduce((a,b)=>a+(b.weight|0),0); let r=Math.random()*sum; for(const x of arr){ r-=(x.weight|0); if(r<=0) return x; } return arr[0]; }
@@ -609,10 +391,10 @@ function spin(){
       if(!reel._next || now>reel._next){
         reel._next=now+ms;
         const randid=ids[Math.floor(Math.random()*ids.length)]||chosen.id;
-        idbGet(randid).then(rec=>{ if(rec) reel.querySelector('img').src=URL.createObjectURL(rec.blob); });
+        getStoredBlob(randid).then(b=>{ if(b) reel.querySelector('img').src=URL.createObjectURL(b); });
       }
       if(p>=1){
-        idbGet(stopIds[i]).then(rec=>{ if(rec) reel.querySelector('img').src=URL.createObjectURL(rec.blob); });
+        getStoredBlob(stopIds[i]).then(b=>{ if(b) reel.querySelector('img').src=URL.createObjectURL(b); });
         reel.classList.remove("blur");
       }
     });
@@ -628,7 +410,7 @@ function finishSpin(m){
   $("#mDiff").textContent="★".repeat(m.difficulty||1)+"☆".repeat(5-(m.difficulty||1));
   $("#mHer").textContent="★".repeat(m.hero||1)+"☆".repeat(5-(m.hero||1));
   $("#mHis").textContent="★".repeat(m.hiso||1)+"☆".repeat(5-(m.hiso||1));
-  idbGet(m.id).then(r=>{if(r) $("#revImg").src=URL.createObjectURL(r.blob);});
+  getStoredBlob(m.id).then(b=>{ if(b) $("#revImg").src=URL.createObjectURL(b); });
   currentId=m.id; populateDesc();
   spinning=false;
   if(state.timerMin>0) startTimer(state.timerMin*60);
@@ -647,38 +429,17 @@ function unlockAudioOnce(){ if(audioReady) return; try{ ac=new (window.AudioCont
 function spinTick(){ if(!ac) return; const o=ac.createOscillator(), g=ac.createGain(); o.type='triangle'; o.frequency.value=240; g.gain.value=.05; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+.08); }
 function chime(){ if(!ac) return; const o=ac.createOscillator(), g=ac.createGain(); o.type='sine'; o.frequency.setValueAtTime(880, ac.currentTime); g.gain.value=.12; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+.22); }
 
-/* top controls */
+/* top controls + pickers */
 $("#oralCtrl").addEventListener("click",()=>{state.oralOnly=!state.oralOnly;$("#oralPill").textContent=state.oralOnly?'ON':'OFF';saveState();});
-$("#diffCtrl").addEventListener("click",()=>showStarPicker("Difficulty","difficulty","#diffPill"));
-$("#herCtrl").addEventListener("click",()=>showStarPicker("Her O meter","herO","#herPill"));
-$("#hisCtrl").addEventListener("click",()=>showStarPicker("His O meter","hisO","#hisPill"));
-$("#catCtrl").addEventListener("click",showCatPicker);
-function pillLabel(arr){ if(!arr || arr.length===0) return 'All'; const s=[...arr].sort((a,b)=>a-b); return s.length===1? '★'.repeat(s[0]) : `${s[0]}-${s[s.length-1]}`; }
-function showStarPicker(title,key,pill){
+$("#catCtrl").addEventListener("click",showCategoryPicker);
+function showCategoryPicker(){
   const ov=document.createElement('div'); ov.className='overlay show';
   const sheet=document.createElement('div'); sheet.className='sheet'; sheet.style.inset='calc(env(safe-area-inset-top) + 2rem) .8rem 1.2rem';
-  sheet.innerHTML=`<header><div class="small">${title}</div><button class="btn" id="spDone">Done</button></header><div class="content" id="spList"></div>`;
+  sheet.innerHTML=`<header><div class="small">Choose Category</div><button class="btn" id="cpClose">Close</button></header><div class="content" id="cpList"></div>`;
   ov.appendChild(sheet); document.body.appendChild(ov);
-  const sel=new Set(state[key]);
-  function render(){
-    const list=$("#spList"); list.innerHTML="";
-    const allBtn=document.createElement('button'); allBtn.className='btn'; allBtn.style.cssText='display:block;width:100%;text-align:left;margin:.25rem 0'; allBtn.textContent=(sel.size===0?'✓ ':'')+"All"; allBtn.onclick=()=>{sel.clear(); render();}; list.appendChild(allBtn);
-    for(let i=1;i<=5;i++){
-      const b=document.createElement('button'); b.className='btn'; b.style.cssText='display:block;width:100%;text-align:left;margin:.25rem 0'; const label='★'.repeat(i); b.textContent=(sel.has(i)?'✓ ':'')+label; b.onclick=()=>{ if(sel.has(i)) sel.delete(i); else sel.add(i); render(); }; list.appendChild(b); }
-  }
-  render();
-  $("#spDone").onclick=()=>{state[key]=Array.from(sel).sort(); $(pill).textContent=pillLabel(state[key]); saveState(); ov.remove();};
+  $("#cpClose").onclick=()=>ov.remove();
+  const list=$("#cpList"); ALL_CATS.forEach(c=>{ const b=document.createElement('button'); b.className='btn'; b.style.cssText='display:block;width:100%;text-align:left;margin:.25rem 0'; b.textContent=(c===state.category?'✓ ':'')+c; b.onclick=()=>{state.category=c; saveState(); $("#catPill").textContent=c; ov.remove();}; list.appendChild(b); });
 }
-function showCatPicker(){
-  const ov=document.createElement('div'); ov.className='overlay show';
-  const sheet=document.createElement('div'); sheet.className='sheet'; sheet.style.inset='calc(env(safe-area-inset-top) + 2rem) .8rem 1.2rem';
-  sheet.innerHTML=`<header><div class="small">Category</div><button class="btn" id="catClose">Close</button></header><div class="content" id="catList"></div>`;
-  ov.appendChild(sheet); document.body.appendChild(ov);
-  $("#catClose").onclick=()=>ov.remove();
-  const list=$("#catList");
-  ALL_CATS.forEach(val=>{const b=document.createElement('button'); b.className='btn'; b.style.cssText='display:block;width:100%;text-align:left;margin:.25rem 0'; b.textContent=(state.category===val?'✓ ':'')+val; b.onclick=()=>{state.category=val; $("#catPill").textContent=val; saveState(); ov.remove();}; list.appendChild(b);});
-}
-/* Timer picker overlay */
 $("#timeCtrl").addEventListener("click", showTimerPicker);
 function showTimerPicker(){
   const ov=document.createElement('div'); ov.className='overlay show';
@@ -713,17 +474,118 @@ function btn(label,fn){const b=document.createElement('button'); b.className='bt
 function fillSelect(sel,items,val){sel.innerHTML=""; items.forEach(x=>{const o=document.createElement('option'); o.value=x; o.textContent=x; if(x===val) o.selected=true; sel.appendChild(o);});}
 function toast(msg){const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>{t.style.opacity='0'; t.style.transition='opacity .35s';},1300); setTimeout(()=>t.remove(),1850);}
 
+/* ===== CSV + Image bootstrap (robust) ===== */
+const CSV_PATH='data/positions.csv';
+const DEFAULT_IMG_BASE='assets/positions/'; // your repo folder
+let IMG_BASE=DEFAULT_IMG_BASE;
+const memBlobs=new Map();
+
+document.addEventListener('click',(e)=>{ if(e.target?.id==='repoResetLoad') hardResetAndLoadFromCSV(); if(e.target?.id==='repoMergeLoad') mergeLoadFromCSV(); });
+
+(async function autoLoadIfEmpty(){
+  await ensureDB();
+  if(Object.keys(meta||{}).length===0){
+    try{ await mergeLoadFromCSV(); toast('Loaded default content'); }catch(e){ console.warn('auto-load failed',e); }
+  }
+})();
+
+async function ensureDB(){ if(!idb){ try{ await openDB(); }catch(e){ console.warn('IDB open failed', e); } } }
+async function hardResetAndLoadFromCSV(){
+  if(!confirm('Clear local data and load fresh from CSV?')) return;
+  await clearLocalData(); await loadCSVAndImages({reset:true});
+  toast('Loaded from CSV'); renderSettings(); renderWeights();
+}
+async function mergeLoadFromCSV(){ await loadCSVAndImages({reset:false}); toast('CSV merge complete'); renderSettings(); renderWeights(); }
+async function clearLocalData(){
+  localStorage.removeItem(LSK); localStorage.removeItem(LSS); meta={}; memBlobs.clear();
+  try{ if(idb){ await new Promise((resolve,reject)=>{ const tx=idb.transaction('images','readwrite'); const req=tx.objectStore('images').clear(); req.onsuccess=()=>resolve(); req.onerror=()=>reject(req.error); }); } }catch(e){ console.warn('IDB clear failed',e); }
+  saveMeta(); saveState();
+}
+async function loadCSVAndImages({reset=false}={}){
+  const ov=document.createElement('div');
+  ov.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;color:#fff;";
+  ov.innerHTML=`<div style="background:#1c1c22;border:1px solid #2a2a36;padding:16px 18px;border-radius:12px;min-width:280px;text-align:center">
+    <div id="csvmsg" style="margin-bottom:10px">Fetching CSV…</div>
+    <div style="height:8px;background:#2a2a36;border-radius:6px;overflow:hidden"><div id="csvbar" style="height:100%;width:0;background:#e2b94b"></div></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const setMsg=t=>ov.querySelector('#csvmsg').textContent=t;
+  const setPct=n=>ov.querySelector('#csvbar').style.width=Math.max(0,Math.min(100,n))+'%';
+  try{
+    const csvText=await (await fetch(CSV_PATH,{cache:'no-cache'})).text();
+    const rows=parseCSV(csvText); if(!rows.length){ setMsg('CSV empty'); await sleep(700); return; }
+    let done=0;
+    for(const r of rows){
+      done++; setMsg(`Importing ${done} of ${rows.length}…`); setPct(100*done/rows.length);
+      const id=normalizeId(r.id);
+      const difficulty=clampInt(r.difficulty,1,5,3);
+      const hero=clampInt(r.hero,1,5,3);
+      const hiso=clampInt(r.hiso,1,5,3);
+      const weight=clampInt(r.weight,0,999,1);
+      const exclude=strToBool(r.exclude);
+      const name=(r.name||'').trim();
+      const category=(r.category||'').trim();
+      const desc=(r.desc||'').toString();
+      const version=(r.version||'').toString();
+      const imgField=(r.image||'').trim();
+
+      meta[id]={...(meta[id]||{}), id, name:name||meta[id]?.name||'Untitled', category:category||meta[id]?.category||'',
+        difficulty, hero, hiso, weight, exclude:!!exclude, desc:desc||meta[id]?.desc||'', version};
+
+      if(imgField){
+        try{
+          const blob=await fetchFirstWorkingBlob(await resolveImageCandidates(imgField));
+          if(blob) await storeBlob(id,blob);
+        }catch(e){ console.warn('image load fail', imgField, e); }
+      }
+      await nextFrame();
+    }
+    saveMeta();
+  }finally{
+    document.body.removeChild(ov);
+  }
+}
+function parseCSV(text){
+  const out=[]; const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n'); if(!lines.length) return out;
+  const headers=splitCSVLine(lines.shift());
+  for(const line of lines){ if(line.trim()==='') continue; const cols=splitCSVLine(line); const obj={}; headers.forEach((h,i)=>obj[h.trim()]=cols[i]??''); out.push(obj); }
+  return out;
+}
+function splitCSVLine(line){
+  const cells=[]; let cur='', q=false; for(let i=0;i<line.length;i++){ const ch=line[i], nx=line[i+1];
+    if(q){ if(ch==='"'&&nx==='"'){cur+='"';i++;continue;} if(ch==='"'){q=false;continue;} cur+=ch; continue; }
+    if(ch==='"'){ q=true; continue; } if(ch===','){ cells.push(cur); cur=''; continue; } cur+=ch;
+  } cells.push(cur); return cells;
+}
+async function resolveImageCandidates(cell){
+  if(/^https?:\/\//i.test(cell)) return [cell];
+  const base=cell.replace(/^\.\//,'').trim();
+  const parts=base.split('/'); let file=parts.pop()||''; const folder=parts.join('/');
+  const name=file.replace(/\.[^.]+$/,''); const ext=(/\.[^.]+$/.exec(file)||[''])[0]; const lower=name.toLowerCase();
+  const exts=ext?[ext]:['.jpg','.jpeg','.png','.webp'];
+  const folders = folder ? [folder+'/'] : [IMG_BASE, DEFAULT_IMG_BASE, 'images/','assets/positions/'];
+  const cands=[]; for(const fo of folders){ for(const e of exts){ cands.push(fo+name+e, fo+lower+e); } }
+  cands.unshift(base);
+  return cands.map(p=> new URL(p, location.href).href);
+}
+async function fetchFirstWorkingBlob(urls){
+  for(const u of urls){ try{ const r=await fetch(u,{cache:'no-cache'}); if(r.ok){ const b=await r.blob(); if(b&&b.size>0) return b; } }catch(e){} }
+  return null;
+}
+async function storeBlob(id,blob){ try{ await idbPut(id,blob); }catch(e){ memBlobs.set(id,blob); } }
+async function getStoredBlob(id){ try{ const rec=await idbGet(id); if(rec&&rec.blob) return rec.blob; }catch(e){} if(memBlobs.has(id)) return memBlobs.get(id); return null; }
+function normalizeId(v){ return String(v&&String(v).trim()?v:(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(16).slice(2))); }
+function clampInt(v,min,max,def){ const n=parseInt(v,10); return Number.isFinite(n)?Math.min(max,Math.max(min,n)):def; }
+function strToBool(x){ const s=String(x||'').trim().toLowerCase(); return s==='1'||s==='true'||s==='yes'||s==='y'; }
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+const nextFrame=()=>new Promise(r=>requestAnimationFrame(r));
+
 /* boot */
 (async function(){
   await openDB(); loadMeta(); loadState();
-  ensureSeedOnBoot();
   $("#oralPill").textContent=state.oralOnly?'ON':'OFF';
-  $("#diffPill").textContent=pillLabel(state.difficulty);
-  $("#herPill").textContent=pillLabel(state.herO);
-  $("#hisPill").textContent=pillLabel(state.hisO);
   $("#catPill").textContent=state.category;
   $("#timePill").textContent=state.timerMin? (state.timerMin+'m') : 'Off';
-  updateFilters();
 })();
 </script>
 </body>
