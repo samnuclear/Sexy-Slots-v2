@@ -146,6 +146,12 @@ header.rig .title{
   <button class="ctrl" id="timeCtrl">Timer <span class="pill" id="timePill">Off</span></button>
 </div>
 
+<div class="controls">
+  <button class="ctrl" id="diffCtrl">Difficulty <span class="pill" id="diffPill">All</span></button>
+  <button class="ctrl" id="heroCtrl">Her-O <span class="pill" id="heroPill">All</span></button>
+  <button class="ctrl" id="hisoCtrl">His-O <span class="pill" id="hisoPill">All</span></button>
+</div>
+
 <div class="spinwrap"><button id="spin">SPIN</button></div>
 
 <div class="reels">
@@ -247,7 +253,7 @@ const ALL_CATS=["All","Unassigned",...CATS];
 const PIN="1616";
 const $=s=>document.querySelector(s); const $$=s=>Array.from(document.querySelectorAll(s));
 let idb; let meta={}; // id->{...}
-let state={oralOnly:false,category:"All",timerMin:0,rig:false,flows:[[],[],[],[],[],[],[]],flowIndex:0,fCat:"All",fW0:false,bulkCat:"",bulkMode:false};
+let state={oralOnly:false,category:"All",difficulty:0,hero:0,hiso:0,timerMin:0,rig:false,flows:[[],[],[],[],[],[],[]],flowIndex:0,fCat:"All",fW0:false,bulkCat:"",bulkMode:false};
 let currentId=null;
 const LSK="ss_meta_v1", LSS="ss_state_v1";
 function saveMeta(){localStorage.setItem(LSK,JSON.stringify(meta));}
@@ -367,6 +373,9 @@ function poolNow(){ let arr=Object.values(meta).filter(m=>!m.exclude && (m.weigh
   if(state.oralOnly) arr=arr.filter(m=>m.category==="Oral for Her"||m.category==="Oral for Him");
   if(state.category==="Unassigned") arr=arr.filter(m=>!m.category);
   else if(state.category!=="All") arr=arr.filter(m=>m.category===state.category);
+  if(state.difficulty) arr=arr.filter(m=>m.difficulty===state.difficulty);
+  if(state.hero) arr=arr.filter(m=>m.hero===state.hero);
+  if(state.hiso) arr=arr.filter(m=>m.hiso===state.hiso);
   return arr;
 }
 function weighted(arr){ const sum=arr.reduce((a,b)=>a+(b.weight|0),0); let r=Math.random()*sum; for(const x of arr){ r-=(x.weight|0); if(r<=0) return x; } return arr[0]; }
@@ -432,6 +441,18 @@ function chime(){ if(!ac) return; const o=ac.createOscillator(), g=ac.createGain
 /* top controls + pickers */
 $("#oralCtrl").addEventListener("click",()=>{state.oralOnly=!state.oralOnly;$("#oralPill").textContent=state.oralOnly?'ON':'OFF';saveState();});
 $("#catCtrl").addEventListener("click",showCategoryPicker);
+$("#diffCtrl").addEventListener("click",()=>showRatingPicker('difficulty','Difficulty','#diffPill'));
+$("#heroCtrl").addEventListener("click",()=>showRatingPicker('hero','Her-O','#heroPill'));
+$("#hisoCtrl").addEventListener("click",()=>showRatingPicker('hiso','His-O','#hisoPill'));
+function showRatingPicker(key,label,pill){
+  const ov=document.createElement('div'); ov.className='overlay show';
+  const sheet=document.createElement('div'); sheet.className='sheet'; sheet.style.inset='calc(env(safe-area-inset-top) + 2rem) .8rem 1.2rem';
+  sheet.innerHTML=`<header><div class="small">Choose ${label}</div><button class="btn" id="rpClose">Close</button></header><div class="content" id="rpList"></div>`;
+  ov.appendChild(sheet); document.body.appendChild(ov);
+  $("#rpClose").onclick=()=>ov.remove();
+  const list=$("#rpList"); const opts=[0,1,2,3,4,5];
+  opts.forEach(v=>{ const b=document.createElement('button'); b.className='btn'; b.style.cssText='display:block;width:100%;text-align:left;margin:.25rem 0'; const txt=v===0?'All':v; b.textContent=(state[key]===v?'✓ ':'')+txt; b.onclick=()=>{state[key]=v; saveState(); document.querySelector(pill).textContent=txt; ov.remove();}; list.appendChild(b); });
+}
 function showCategoryPicker(){
   const ov=document.createElement('div'); ov.className='overlay show';
   const sheet=document.createElement('div'); sheet.className='sheet'; sheet.style.inset='calc(env(safe-area-inset-top) + 2rem) .8rem 1.2rem';
@@ -546,16 +567,16 @@ async function loadCSVAndImages({reset=false}={}){
   }
 }
 function parseCSV(text){
+  function split(line){
+    const cells=[]; let cur='', q=false; for(let i=0;i<line.length;i++){ const ch=line[i], nx=line[i+1];
+      if(q){ if(ch==='"'&&nx==='"'){cur+='"';i++;continue;} if(ch==='"'){q=false;continue;} cur+=ch; continue; }
+      if(ch==='"'){ q=true; continue; } if(ch===','){ cells.push(cur); cur=''; continue; } cur+=ch;
+    } cells.push(cur); return cells;
+  }
   const out=[]; const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n'); if(!lines.length) return out;
-  const headers=splitCSVLine(lines.shift());
-  for(const line of lines){ if(line.trim()==='') continue; const cols=splitCSVLine(line); const obj={}; headers.forEach((h,i)=>obj[h.trim()]=cols[i]??''); out.push(obj); }
+  const headers=split(lines.shift());
+  for(const line of lines){ if(line.trim()==='') continue; const cols=split(line); const obj={}; headers.forEach((h,i)=>obj[h.trim()]=cols[i]??''); out.push(obj); }
   return out;
-}
-function splitCSVLine(line){
-  const cells=[]; let cur='', q=false; for(let i=0;i<line.length;i++){ const ch=line[i], nx=line[i+1];
-    if(q){ if(ch==='"'&&nx==='"'){cur+='"';i++;continue;} if(ch==='"'){q=false;continue;} cur+=ch; continue; }
-    if(ch==='"'){ q=true; continue; } if(ch===','){ cells.push(cur); cur=''; continue; } cur+=ch;
-  } cells.push(cur); return cells;
 }
 async function resolveImageCandidates(cell){
   if(/^https?:\/\//i.test(cell)) return [cell];
@@ -585,6 +606,9 @@ const nextFrame=()=>new Promise(r=>requestAnimationFrame(r));
   await openDB(); loadMeta(); loadState();
   $("#oralPill").textContent=state.oralOnly?'ON':'OFF';
   $("#catPill").textContent=state.category;
+  $("#diffPill").textContent=state.difficulty || 'All';
+  $("#heroPill").textContent=state.hero || 'All';
+  $("#hisoPill").textContent=state.hiso || 'All';
   $("#timePill").textContent=state.timerMin? (state.timerMin+'m') : 'Off';
 })();
 </script>
