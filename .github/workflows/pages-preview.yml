@@ -18,36 +18,39 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    env:
-      # Folder where the preview will live inside the Pages site
-      PREVIEW_DIR: previews/${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || github.ref_name }}
+
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      # If you ever add a build, do it here and write output to ./dist
-      # For now, we’ll just copy repo files → ./dist
+      - name: 🧮 Compute preview directory
+        id: prep
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "DIR=previews/pr-${{ github.event.number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "DIR=previews/dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      # If you add a build later, write output to ./dist first, then copy.
       - name: 📦 Prepare preview folder
         run: |
-          mkdir -p dist/${{ env.PREVIEW_DIR }}
+          mkdir -p "dist/${{ steps.prep.outputs.DIR }}"
           shopt -s dotglob
-          cp -r * dist/${{ env.PREVIEW_DIR }}/
+          cp -r * "dist/${{ steps.prep.outputs.DIR }}/"
 
       - name: 🔧 Add preview base redirect (optional)
         run: |
-          # So you can open /previews/*/ directly and assets resolve relatively.
-          echo '<meta http-equiv="refresh" content="0; url=./index.html?v=${{ github.run_id }}"/>' > dist/${{ env.PREVIEW_DIR }}/preview.html
+          echo '<meta http-equiv="refresh" content="0; url=./index.html?v=${{ github.run_id }}"/>' \
+          > "dist/${{ steps.prep.outputs.DIR }}/preview.html"
 
-      - name: ⬆️ Upload artifact (full gh-pages tree with previews/ kept)
+      - name: ⬆️ Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
       - name: 🚀 Deploy to GitHub Pages (preview)
+        id: deployment
         uses: actions/deploy-pages@v4
         with:
           preview: true
-
-      - name: 🔗 Preview URL
-        run: echo "Preview: ${{ steps.deployment.outputs.page_url }}${{ env.PREVIEW_DIR }}/"
-        id: url
