@@ -1,0 +1,35 @@
+name: Pages • Production (main → root)
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages-prod"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      # If you ever add a build step (npm/vite/rollup), insert it here.
+      # For now we deploy the repo root as-is.
+
+      - name: ⬆️ Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .  # deploy repo root
+
+      - name: 🚀 Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+        with:
+          # production deploy to root (no preview flag)
+          preview: false
