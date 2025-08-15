@@ -1,0 +1,53 @@
+name: Pages • Preview (dev & PRs → /previews/*)
+
+on:
+  push:
+    branches: [ "dev" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages-preview"
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      # Folder where the preview will live inside the Pages site
+      PREVIEW_DIR: previews/${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || github.ref_name }}
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      # If you ever add a build, do it here and write output to ./dist
+      # For now, we’ll just copy repo files → ./dist
+      - name: 📦 Prepare preview folder
+        run: |
+          mkdir -p dist/${{ env.PREVIEW_DIR }}
+          shopt -s dotglob
+          cp -r * dist/${{ env.PREVIEW_DIR }}/
+
+      - name: 🔧 Add preview base redirect (optional)
+        run: |
+          # So you can open /previews/*/ directly and assets resolve relatively.
+          echo '<meta http-equiv="refresh" content="0; url=./index.html?v=${{ github.run_id }}"/>' > dist/${{ env.PREVIEW_DIR }}/preview.html
+
+      - name: ⬆️ Upload artifact (full gh-pages tree with previews/ kept)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: 🚀 Deploy to GitHub Pages (preview)
+        uses: actions/deploy-pages@v4
+        with:
+          preview: true
+
+      - name: 🔗 Preview URL
+        run: echo "Preview: ${{ steps.deployment.outputs.page_url }}${{ env.PREVIEW_DIR }}/"
+        id: url
