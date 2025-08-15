@@ -1,4 +1,104 @@
-id,name,category,difficulty,hero,hiso,weight,exclude,image,desc,version
-pos-001,Classic Missionary,Missionary,2,3,4,1,0,assets/positions/f013-01.jpg,"Gentle, intimate eye contact.",1
-pos-002,Chair Lift,Standing,4,3,5,1,0,assets/positions/f014-01.jpg,"Requires balance; use sturdy chair.",1
-pos-003,Table Edge,Deep Penetration,3,4,4,1,0,assets/positions/f016-01.jpg,"Best with solid edge height ~90cm.",1
+﻿id,name,category,difficulty,hero,hiso,weight,exclude,image,desc,version
+1,Butterfly,Missionary,1,4,4,1,FALSE,1.jpg,,v1
+2,Coital Alignment Technique,Missionary,3,5,3,1,FALSE,2.jpg,,v1
+3,Cowboy,Missionary,3,1,3,1,FALSE,3.jpg,,v1
+4,Delight,Missionary,1,3,3,1,FALSE,4.jpg,,v1
+5,Drill,Missionary,1,4,4,1,FALSE,5.jpg,,v1
+6,Meet 'n' Greet,Missionary,1,2,4,1,FALSE,6.jpg,,v1
+7,Missionary,Missionary,1,3,4,1,FALSE,7.jpg,,v1
+8,Missionary Reversed,Missionary,5,3,1,1,FALSE,8.jpg,,v1
+9,Reverse Jockey,Missionary,1,3,4,1,FALSE,9.jpg,,v1
+10,X Marks the Spot,Missionary,2,3,3,1,FALSE,10.jpg,,v1
+11,Amazon,Woman-on-top,5,3,1,1,FALSE,11.jpg,,v1
+12,Cowgirl,Woman-on-top,1,5,3,1,FALSE,12.jpg,,v1
+13,Hot Seat,Woman-on-top,3,3,3,1,FALSE,13.jpg,,v1
+14,Advanced Hot Seat,Woman-on-top,5,3,3,1,FALSE,14.jpg,,v1
+15,Crab,Woman-on-top,3,3,3,1,FALSE,15.jpg,,v1
+16,Lunge,Woman-on-top,4,3,4,1,FALSE,16.jpg,,v1
+17,Rearview Mirror,Woman-on-top,3,3,3,1,FALSE,17.jpg,,v1
+18,Reverse Cowgirl,Woman-on-top,1,3,5,1,FALSE,18.jpg,,v1
+19,Seated Scissors,Woman-on-top,2,4,3,1,FALSE,19.jpg,,v1
+20,Side Saddle,Woman-on-top,3,1,4,1,FALSE,20.jpg,,v1
+21,Sunny Side Up,Woman-on-top,3,1,3,1,FALSE,21.jpg,,v1
+22,Sybian,Woman-on-top,3,5,4,1,FALSE,22.jpg,,v1
+23,Spread Eagle,Oral for Her,1,5,1,1,FALSE,23.jpg,,v1
+24,Bottoms Up,Oral for Her,3,4,1,1,FALSE,24.jpg,,v1
+25,Ear Warmer,Oral for Her,1,5,1,1,FALSE,25.jpg,,v1
+26,Face Straddle,Oral for Her,1,4,3,1,FALSE,26.jpg,,v1
+27,Feedbag,Oral for Her,4,3,1,1,FALSE,27.jpg,,v1
+28,Leg Up,Oral for Her,1,4,3,1,FALSE,28.jpg,,v1
+29,Licking the Flagpole,Oral for Her,1,4,1,1,FALSE,29.jpg,,v1
+30,Reverse Face Straddle,Oral for Her,3,3,3,1,FALSE,30.jpg,,v1
+31,Standing Face Straddle,Oral for Her,1,5,1,1,FALSE,31.jpg,,v1
+32,Under the Hood (For Her),Oral for Her,1,4,1,1,FALSE,32.jpg,,v1
+33,The Original,Oral for Him,1,1,5,1,FALSE,33.jpg,,v1
+34,Almost 69,Oral for Him,1,1,4,1,FALSE,34.jpg,,v1
+35,Blowjob Therapy,Oral for Him,1,1,4,1,FALSE,35.jpg,,v1
+36,Deep Throat,Oral for Him,1,1,5,1,FALSE,36.jpg,,v1
+37,Downward Stroke,Oral for Him,1,1,4,1,FALSE,37.jpg,,v1
+38,Face Straddle for Him,Oral for Him,1,1,5,1,FALSE,38.jpg,,v1
+39,Face Thrust,Oral for Him,1,1,5,1,FALSE,39.jpg,,v1
+40,Handstand,Oral for Him,5,1,1,1,FALSE,40.jpg,,v1
+41,Kneeling Blowjob,Oral for Him,1,1,5,1,FALSE,41.jpg,,v1
+42,Peek-a-Boo,Oral for Him,1,1,4,1,FALSE,42.jpg,,v1
+43,Under the Hood (For Him),Oral for Him,1,1,3,1,FALSE,43.jpg,,v1
+44,Lotus,Sitting,3,5,4,1,FALSE,44.jpg,,v1
+45,Assisted Lotus,Sitting,1,5,4,1,FALSE,45.jpg,,v1
+46,Kneeling Embrace,Sitting,1,1,3,1,FALSE,46.jpg,,v1
+47,Lap Dance,Sitting,4,1,3,1,FALSE,47.jpg,,v1
+48,Laptop,Sitting,3,3,3,1,FALSE,48.jpg,,v1
+49,Pretzel,Sitting,5,1,1,1,FALSE,49.jpg,,v1
+50,Seesaw,Sitting,1,3,5,1,FALSE,50.jpg,,v1
+51,Dancer,Standing,3,3,4,1,FALSE,51.jpg,,v1
+52,Ballerina,Standing,5,1,4,1,FALSE,52.jpg,,v1
+53,Bodyguard,Standing,4,1,3,1,FALSE,53.jpg,,v1
+54,Piston,Standing,5,3,3,1,FALSE,54.jpg,,v1
+55,Prison Guard,Standing,1,3,5,1,FALSE,55.jpg,,v1
+56,Squat,Standing,3,1,4,1,FALSE,56.jpg,,v1
+57,Standing Doggy Style,Standing,1,3,4,1,FALSE,57.jpg,,v1
+58,Crazy Starfish,Side-by-Side,4,3,4,1,FALSE,58.jpg,,v1
+59,Inverted Spoon,Side-by-Side,1,3,3,1,FALSE,59.jpg,,v1
+60,Linguini,Side-by-Side,3,4,4,1,FALSE,60.jpg,,v1
+61,Scissors,Side-by-Side,3,4,4,1,FALSE,61.jpg,,v1
+62,Spooning,Side-by-Side,1,3,3,1,FALSE,62.jpg,,v1
+63,Spork,Side-by-Side,1,1,3,1,FALSE,63.jpg,,v1
+64,Twister,Side-by-Side,5,4,4,1,FALSE,64.jpg,,v1
+65,Climbing the Flagpole,Deep Penetration,2,3,4,1,FALSE,65.jpg,,v1
+66,Cradle,Deep Penetration,4,1,3,1,FALSE,66.jpg,,v1
+67,Deck Chair,Deep Penetration,1,4,4,1,FALSE,67.jpg,,v1
+68,Deep Victory,Deep Penetration,4,1,4,1,FALSE,68.jpg,,v1
+69,Hotter Deep Victory,Deep Penetration,3,1,5,1,FALSE,69.jpg,,v1
+70,G-Force,Deep Penetration,4,3,5,1,FALSE,70.jpg,,v1
+71,Shoulder Holder,Deep Penetration,3,4,4,1,FALSE,71.jpg,,v1
+72,Viennese Oyster,Deep Penetration,5,1,5,1,FALSE,72.jpg,,v1
+73,69,69,1,4,4,1,FALSE,73.jpg,,v1
+74,Reverse 69,69,1,4,4,1,FALSE,74.jpg,,v1
+75,Sideways 69,69,1,4,4,1,FALSE,75.jpg,,v1
+76,Basic Rear Entry,Rear Entry,1,3,5,1,FALSE,76.jpg,,v1
+77,Bulldog,Rear Entry,4,3,3,1,FALSE,77.jpg,,v1
+78,Doggy Style,Rear Entry,1,3,5,1,FALSE,78.jpg,,v1
+79,Fire Hydrant,Rear Entry,2,3,4,1,FALSE,79.jpg,,v1
+80,Frog Leap,Rear Entry,1,1,4,1,FALSE,80.jpg,,v1
+81,Grasshopper,Rear Entry,5,1,1,1,FALSE,81.jpg,,v1
+82,Life Raft,Rear Entry,1,1,3,1,FALSE,82.jpg,,v1
+83,Turtle,Rear Entry,1,2,4,1,FALSE,83.jpg,,v1
+84,Yoga Master,Rear Entry,5,1,3,1,FALSE,84.jpg,,v1
+85,Bent Over and Bound,BDSM for Lovers,1,1,5,1,FALSE,85.jpg,,v1
+86,Frog Leap Bound,BDSM for Lovers,1,4,5,1,FALSE,86.jpg,,v1
+87,Boss's Chair,BDSM for Lovers,1,1,5,1,FALSE,87.jpg,,v1
+88,Jockey,BDSM for Lovers,1,1,4,1,FALSE,88.jpg,,v1
+89,Missionary with a Twist,BDSM for Lovers,1,4,5,1,FALSE,89.jpg,,v1
+90,Over the Desk,BDSM for Lovers,1,4,5,1,FALSE,90.jpg,,v1
+91,Desk Domination,BDSM for Lovers,1,4,5,1,FALSE,91.jpg,,v1
+92,Anal Sex,Adventurous,2,3,4,1,FALSE,92.jpg,,v1
+93,Butter Churner,Adventurous,1,1,5,1,FALSE,93.jpg,,v1
+94,Lying Snow Angel,Adventurous,4,3,2,1,FALSE,94.jpg,,v1
+95,Sitting Snow Angel,Adventurous,4,3,2,1,FALSE,95.jpg,,v1
+96,Waterfall,Adventurous,5,4,4,1,FALSE,96.jpg,,v1
+97,Plow,Adventurous,5,2,4,1,FALSE,97.jpg,,v1
+98,Shoulder Stand,Adventurous,5,4,4,1,FALSE,98.jpg,,v1
+99,The Hanging Garden,Adventurous,5,5,5,1,FALSE,99.jpg,,v1
+100,Wheelbarrow,Adventurous,4,1,3,1,FALSE,100.jpg,,v1
+101,Advanced Wheelbarrow,Adventurous,3,2,3,1,FALSE,101.jpg,,v1
+102,Bridge,Adventurous,5,1,4,1,FALSE,102.jpg,,v1
+103,Reverse Bridge,Adventurous,5,2,3,1,FALSE,103.jpg,,v1
