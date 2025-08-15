@@ -393,7 +393,21 @@ function spin(){
   spinning=true; $("#spin").disabled=true;
   const reels=[$("#reel1"),$("#reel2"),$("#reel3")];
   const dur=[5400,6000,5700]; const ids=pool.map(m=>m.id); if(!ids.length) ids.push(chosen.id);
-  const stopIds=[randOther(pool,chosen.id), chosen.id, randOther(pool,chosen.id)];
+
+  // Ensure side reels are distinct: exclude center first, then pick left and right from remaining; fallback gracefully if pool is too small.
+  const centerId=chosen.id;
+  let sidePool=ids.filter(id=>id!==centerId);
+  let leftId=sidePool.length?sidePool[Math.floor(Math.random()*sidePool.length)]:undefined;
+  if(leftId!==undefined){
+    sidePool=sidePool.filter(id=>id!==leftId);
+  }else{
+    leftId=randOther(pool,centerId);
+  }
+  let rightId=sidePool.length?sidePool[Math.floor(Math.random()*sidePool.length)]:undefined;
+  if(rightId===undefined){
+    rightId=randOther(pool.filter(m=>m.id!==leftId),centerId);
+  }
+  const stopIds=[leftId,centerId,rightId];
   reels.forEach(r=>r.classList.add("blur"));
 
   const start=performance.now(); const speed0=26;
