@@ -587,12 +587,16 @@ async function resolveImageCandidates(cell){
   if(/^https?:\/\//i.test(cell)) return [cell];
   const base=cell.replace(/^\.\//,'').trim();
   const parts=base.split('/'); let file=parts.pop()||''; const folder=parts.join('/');
-  const name=file.replace(/\.[^.]+$/,''); const ext=(/\.[^.]+$/.exec(file)||[''])[0]; const lower=name.toLowerCase();
-  const exts=ext?[ext]:['.jpg','.jpeg','.png','.webp'];
+  const match=/\.[^.]+$/.exec(file); const stem=match?file.slice(0,-match[0].length):file; const ext=match?match[0]:'';
+  // Try extension & case variants: original + lowercase + common set (.jpg/.jpeg/.png/.webp).
+  const extSet=[]; if(ext){ extSet.push(ext); const le=ext.toLowerCase(); if(le!==ext) extSet.push(le); }
+  for(const e of ['.jpg','.jpeg','.png','.webp']) if(!extSet.includes(e)) extSet.push(e);
+  const stems=[]; stems.push(stem); const ls=stem.toLowerCase(); if(ls!==stem) stems.push(ls);
   const folders = folder ? [folder+'/'] : [IMG_BASE, DEFAULT_IMG_BASE, 'images/','assets/positions/'];
-  const cands=[]; for(const fo of folders){ for(const e of exts){ cands.push(fo+name+e, fo+lower+e); } }
+  const cands=[]; for(const fo of folders){ for(const st of stems){ for(const e of extSet){ cands.push(fo+st+e); } } }
   cands.unshift(base);
-  return cands.map(p=> new URL(p, location.href).href);
+  const seen=new Set(); const out=[]; for(const p of cands){ if(!seen.has(p)){ seen.add(p); out.push(new URL(p,location.href).href); } }
+  return out;
 }
 async function fetchFirstWorkingBlob(urls){
   for(const u of urls){ try{ const r=await fetch(u,{cache:'no-cache'}); if(r.ok){ const b=await r.blob(); if(b&&b.size>0) return b; } }catch(e){} }
