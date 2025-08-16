@@ -1,56 +1,50 @@
-name: Pages • Preview (dev & PRs → /previews/*)
+name: Pages — Preview
 
 on:
   push:
-    branches: [ "dev" ]
+    branches: [ dev ]
   pull_request:
-    branches: [ "main" ]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
   group: gh-pages-preview-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
+env:
+  BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+
 jobs:
-  build-and-deploy:
+  preview:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: 🧮 Compute preview directory
-        id: prep
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "DIR=previews/pr-${{ github.event.number }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "DIR=previews/dev" >> "$GITHUB_OUTPUT"
-          fi
-
-      # If you add a build later, write output to ./dist first, then copy.
-      - name: 📦 Prepare preview folder
-        run: |
-          mkdir -p "dist/${{ steps.prep.outputs.DIR }}"
-          shopt -s dotglob
-          cp -r * "dist/${{ steps.prep.outputs.DIR }}/"
-
-      - name: 🔧 Add preview base redirect (optional)
-        run: |
-          echo '<meta http-equiv="refresh" content="0; url=./index.html?v=${{ github.run_id }}"/>' \
-          > "dist/${{ steps.prep.outputs.DIR }}/preview.html"
-
-      - name: ⬆️ Upload artifact
-        uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          fetch-depth: 0
 
-      - name: 🚀 Deploy to GitHub Pages (preview)
-        id: deployment
-        uses: actions/deploy-pages@v4
+      # 👉 Build a separate staging dir. DO NOT copy into a subfolder of your source.
+      - name: Prepare preview files
+        run: |
+          set -e
+          rm -rf public
+          mkdir -p public
+          # Copy your single-file PWA + assets
+          cp -f index.html public/ || true
+          cp -f manifest.webmanifest public/ 2>/dev/null || true
+          cp -f service-worker.js public/ 2>/dev/null || true
+          [ -d assets ] && cp -R assets public/ || true
+          [ -d data ] && cp -R data public/ || true
+
+      # 👉 Let the action place files under /previews/<branch> on the gh-pages branch.
+      - name: Deploy to gh-pages (/previews/${{ env.BRANCH_NAME }})
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          preview: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          destination_dir: previews/${{ env.BRANCH_NAME }}
+          keep_files: true
