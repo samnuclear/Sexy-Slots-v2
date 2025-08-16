@@ -284,10 +284,15 @@ async function batchImport(files){
   let done=0, ok=0;
   for(const f of files){ if(cancelled) break;
     done++; ptext.textContent=`Importing ${done} of ${files.length}…`; pbar.style.width=Math.round(done/files.length*100)+"%";
-    try{const id=makeId(); await idbPut(id,f);
-      meta[id]={id,name:(f.name||"").replace(/\.[^.]+$/,""),category:"",difficulty:3,hero:3,hiso:3,weight:1,exclude:false,desc:""}; ok++;
+    const id=makeId();
+    try{
+      await storeBlob(id,f); // Use storeBlob to allow memory fallback in private mode (instead of direct idbPut)
+      ok++;
+    }catch(e){console.warn("Import fail",e);}finally{
+      meta[id]={id,name:(f.name||"").replace(/\.[^.]+$/,""),category:"",difficulty:3,hero:3,hiso:3,weight:1,exclude:false,desc:""};
+      meta[id].missing=false;
       await new Promise(r=>requestAnimationFrame(r));
-    }catch(e){console.warn("Import fail",e);}
+    }
   }
   saveMeta(); document.body.removeChild(ov); toast(cancelled?`Cancelled (${ok} saved)`:`Imported ${ok}`); renderSettings(); renderWeights();
 }
@@ -388,7 +393,21 @@ function spin(){
   spinning=true; $("#spin").disabled=true;
   const reels=[$("#reel1"),$("#reel2"),$("#reel3")];
   const dur=[5400,6000,5700]; const ids=pool.map(m=>m.id); if(!ids.length) ids.push(chosen.id);
-  const stopIds=[randOther(pool,chosen.id), chosen.id, randOther(pool,chosen.id)];
+
+  // Ensure side reels are distinct: exclude center first, then pick left and right from remaining; fallback gracefully if pool is too small.
+  const centerId=chosen.id;
+  let sidePool=ids.filter(id=>id!==centerId);
+  let leftId=sidePool.length?sidePool[Math.floor(Math.random()*sidePool.length)]:undefined;
+  if(leftId!==undefined){
+    sidePool=sidePool.filter(id=>id!==leftId);
+  }else{
+    leftId=randOther(pool,centerId);
+  }
+  let rightId=sidePool.length?sidePool[Math.floor(Math.random()*sidePool.length)]:undefined;
+  if(rightId===undefined){
+    rightId=randOther(pool.filter(m=>m.id!==leftId),centerId);
+  }
+  const stopIds=[leftId,centerId,rightId];
   reels.forEach(r=>r.classList.add("blur"));
 
   const start=performance.now(); const speed0=26;
@@ -582,12 +601,16 @@ async function resolveImageCandidates(cell){
   if(/^https?:\/\//i.test(cell)) return [cell];
   const base=cell.replace(/^\.\//,'').trim();
   const parts=base.split('/'); let file=parts.pop()||''; const folder=parts.join('/');
-  const name=file.replace(/\.[^.]+$/,''); const ext=(/\.[^.]+$/.exec(file)||[''])[0]; const lower=name.toLowerCase();
-  const exts=ext?[ext]:['.jpg','.jpeg','.png','.webp'];
+  const match=/\.[^.]+$/.exec(file); const stem=match?file.slice(0,-match[0].length):file; const ext=match?match[0]:'';
+  // Try extension & case variants: original + lowercase + common set (.jpg/.jpeg/.png/.webp).
+  const extSet=[]; if(ext){ extSet.push(ext); const le=ext.toLowerCase(); if(le!==ext) extSet.push(le); }
+  for(const e of ['.jpg','.jpeg','.png','.webp']) if(!extSet.includes(e)) extSet.push(e);
+  const stems=[]; stems.push(stem); const ls=stem.toLowerCase(); if(ls!==stem) stems.push(ls);
   const folders = folder ? [folder+'/'] : [IMG_BASE, DEFAULT_IMG_BASE, 'images/','assets/positions/'];
-  const cands=[]; for(const fo of folders){ for(const e of exts){ cands.push(fo+name+e, fo+lower+e); } }
+  const cands=[]; for(const fo of folders){ for(const st of stems){ for(const e of extSet){ cands.push(fo+st+e); } } }
   cands.unshift(base);
-  return cands.map(p=> new URL(p, location.href).href);
+  const seen=new Set(); const out=[]; for(const p of cands){ if(!seen.has(p)){ seen.add(p); out.push(new URL(p,location.href).href); } }
+  return out;
 }
 async function fetchFirstWorkingBlob(urls){
   for(const u of urls){ try{ const r=await fetch(u,{cache:'no-cache'}); if(r.ok){ const b=await r.blob(); if(b&&b.size>0) return b; } }catch(e){} }
