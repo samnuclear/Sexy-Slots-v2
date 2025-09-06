@@ -1,35 +1,41 @@
-name: Pages • Production (main → root)
+name: Pages — Production (main → gh-pages root)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
-  group: "pages-prod"
+  group: gh-pages-production
   cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
-
-      # If you ever add a build step (npm/vite/rollup), insert it here.
-      # For now we deploy the repo root as-is.
-
-      - name: ⬆️ Upload artifact
-        uses: actions/upload-pages-artifact@v3
         with:
-          path: .  # deploy repo root
+          fetch-depth: 0
 
-      - name: 🚀 Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
+      - name: 📦 Prepare site
+        run: |
+          set -e
+          rm -rf public
+          mkdir -p public
+          cp -f index.html public/ || true
+          cp -f manifest.webmanifest public/ 2>/dev/null || true
+          cp -f service-worker.js public/ 2>/dev/null || true
+          [ -d assets ] && cp -R assets public/ || true
+          [ -d data ] && cp -R data public/ || true
+
+      - name: 🚀 Deploy to gh-pages (root)
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          # production deploy to root (no preview flag)
-          preview: false
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          keep_files: true
