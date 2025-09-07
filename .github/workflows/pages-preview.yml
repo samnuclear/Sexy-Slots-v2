@@ -1,31 +1,33 @@
-name: Preview - GitHub Pages
+name: Preview - gh-pages subdir
 on:
   push:
-    branches: ['dev/**', 'dev', 'feature/**']
+    branches: ['dev', 'dev/**', 'feature/**']
   pull_request:
     branches: ['dev','main']
+  workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages-preview-${{ github.ref }}
+  group: gh-pages-preview-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   deploy:
-    environment:
-      name: preview
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - name: Stage static files
+        run: |
+          mkdir -p public
+          rsync -a --delete ./ public/
+          touch public/.nojekyll
+      - name: Deploy preview to gh-pages /previews/{branch}
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          path: '.'
-      - id: deployment
-        uses: actions/deploy-pages@v4
-
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./public
+          destination_dir: previews/${{ github.head_ref || github.ref_name }}
+          keep_files: true
