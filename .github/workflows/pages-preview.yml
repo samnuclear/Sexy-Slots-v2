@@ -1,50 +1,31 @@
-name: Pages — Preview
-
+name: Preview - GitHub Pages
 on:
   push:
-    branches: [ dev ]
+    branches: ['dev/**', 'dev', 'feature/**']
   pull_request:
-    types: [opened, synchronize, reopened]
-  workflow_dispatch:
+    branches: ['dev','main']
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
-  group: gh-pages-preview-${{ github.head_ref || github.ref_name }}
+  group: pages-preview-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
-
 jobs:
-  preview:
+  deploy:
+    environment:
+      name: preview
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
-          fetch-depth: 0
+          path: '.'
+      - id: deployment
+        uses: actions/deploy-pages@v4
 
-      # 👉 Build a separate staging dir. DO NOT copy into a subfolder of your source.
-      - name: Prepare preview files
-        run: |
-          set -e
-          rm -rf public
-          mkdir -p public
-          # Copy your single-file PWA + assets
-          cp -f index.html public/ || true
-          cp -f manifest.webmanifest public/ 2>/dev/null || true
-          cp -f service-worker.js public/ 2>/dev/null || true
-          [ -d assets ] && cp -R assets public/ || true
-          [ -d data ] && cp -R data public/ || true
-
-      # 👉 Let the action place files under /previews/<branch> on the gh-pages branch.
-      - name: Deploy to gh-pages (/previews/${{ env.BRANCH_NAME }})
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public
-          destination_dir: previews/${{ env.BRANCH_NAME }}
-          keep_files: true
