@@ -130,9 +130,49 @@ header.rig .title{
 
 /* util */
 .toast{position:fixed;left:50%;bottom:18vh;transform:translateX(-50%);background:#111;border:1px solid var(--line);padding:10px 14px;border-radius:12px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.36)}
+/* --- Onboarding overlay --- */
+.ob{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:9999; padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom); }
+.ob.hidden{ display:none; }
+.ob-card{ width:min(560px,92vw); background:#111; color:#fff; border-radius:16px; padding:20px 16px 12px; box-shadow:0 10px 30px rgba(0,0,0,.45); }
+.ob-header h1{ margin:0 0 4px; font-size:22px; }
+.ob-sub{ margin:0 0 12px; opacity:.8; }
+.ob-progress{ height:6px; background:#222; border-radius:99px; overflow:hidden; margin:0 0 6px; }
+.ob-progress-bar{ height:100%; width:0%; background:#4ade80; transition:width .2s ease; }
+.ob-loading{ margin:0 0 12px; font-size:12px; opacity:.75; }
+.ob-step h2{ margin:8px 0; font-size:18px; }
+.ob-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:8px 0 4px; }
+.ob-chip{ padding:10px 12px; border:1px solid #2a2a2a; border-radius:12px; background:#191919; text-align:center; user-select:none; }
+.ob-chip[aria-pressed="true"]{ border-color:#4ade80; background:#1f2a22; }
+.ob-range{ width:100%; }
+.ob-actions{ display:flex; gap:8px; margin-top:8px; }
+.ob-btn{ flex:1; padding:12px; border:none; border-radius:12px; background:#4ade80; color:#08210f; font-weight:600; }
+.ob-ghost{ background:#232323; color:#eee; }
+.ob-skip{ margin:8px auto 0; display:block; background:none; border:none; color:#aaa; text-decoration:underline; }
+@media (hover:hover){ .ob-chip:hover{ border-color:#3a3a3a; } }
 </style>
 </head>
 <body>
+<!-- Onboarding / Welcome Overlay -->
+<div id="onboard" class="ob hidden">
+  <div class="ob-card">
+    <header class="ob-header">
+      <h1>Sexy Slots</h1>
+      <p class="ob-sub">Let’s tailor your spins.</p>
+    </header>
+
+    <div class="ob-progress"><div class="ob-progress-bar" id="obProg"></div></div>
+    <p class="ob-loading" id="obLoad">Loading positions… 0%</p>
+
+    <div id="obStepWrap"><!-- Steps injected by JS --></div>
+
+    <footer class="ob-actions">
+      <button id="obBack" class="ob-btn ob-ghost" disabled>Back</button>
+      <button id="obNext" class="ob-btn" disabled>Next</button>
+    </footer>
+
+    <button id="obSkip" class="ob-skip">Skip for now</button>
+  </div>
+</div>
 <div class="safe" aria-hidden="true"></div>
 <header id="hdr">
   <button class="hamb" id="btnSettings">☰</button>
@@ -219,6 +259,7 @@ header.rig .title{
         <!-- Repo loader actions -->
         <button class="btn" id="repoResetLoad" title="Clear local data then import from CSV">Reset & Load from CSV</button>
         <button class="btn" id="repoMergeLoad" title="Merge CSV rows into current library">Reload from CSV (merge)</button>
+        <button id="runOnboardBtn">Run Welcome Setup</button>
       </div>
       <div class="grid" id="cards"></div>
     </div>
@@ -526,6 +567,8 @@ document.addEventListener('click',(e)=>{ if(e.target?.id==='repoResetLoad') hard
   await ensureDB();
   if(Object.keys(meta||{}).length===0){
     try{ await mergeLoadFromCSV(); toast('Loaded default content'); }catch(e){ console.warn('auto-load failed',e); }
+  } else {
+    setBootstrapProgress(100);
   }
 })();
 
@@ -556,7 +599,7 @@ async function loadCSVAndImages({reset=false}={}){
     const rows=parseCSV(csvText); if(!rows.length){ setMsg('CSV empty'); await sleep(700); return; }
     let done=0;
     for(const r of rows){
-      done++; setMsg(`Importing ${done} of ${rows.length}…`); setPct(100*done/rows.length);
+      done++; setMsg(`Importing ${done} of ${rows.length}…`); setPct(100*done/rows.length); setBootstrapProgress(100*done/rows.length);
       const id=normalizeId(r.id);
       const difficulty=clampInt(r.difficulty,1,5,3);
       const hero=clampInt(r.hero,1,5,3);
@@ -581,6 +624,7 @@ async function loadCSVAndImages({reset=false}={}){
       await nextFrame();
     }
     saveMeta();
+    setBootstrapProgress(100);
   }finally{
     document.body.removeChild(ov);
   }
@@ -634,6 +678,192 @@ const nextFrame=()=>new Promise(r=>requestAnimationFrame(r));
   $("#hisoPill").textContent=state.hiso || 'All';
   $("#timePill").textContent=state.timerMin? (state.timerMin+'m') : 'Off';
 })();
+</script>
+<script>
+// ---- Onboarding Config ------------------------------------------------------
+const OB_VERSION = 'v1';
+const obKey = 'sexySlots.onboarding.' + OB_VERSION;
+const obAnswersKey = 'sexySlots.answers.' + OB_VERSION;
+
+const ob = {
+  step: 0,
+  steps: [
+    { id: 'level', title: "What's your level?", multi: false,
+      options: ['Beginner', 'Intermediate', 'Advanced'],
+      map: (val) => ({ level: val }) },
+    { id: 'categories', title: "What are you into?", multi: true,
+      options: ['Oral', 'Missionary', 'Doggy', 'Standing', 'Riding', 'Anal', 'BDSM light'],
+      map: (vals) => ({ categories: vals }) },
+    { id: 'difficulty', title: "Choose difficulty range", range: true,
+      min: 1, max: 5, defMin: 1, defMax: 3,
+      map: (minmax) => ({ difficultyMin: minmax[0], difficultyMax: minmax[1] }) },
+    { id: 'bdsm', title: "BDSM content?", multi: false,
+      options: ['No', 'Yes'],
+      map: (val) => ({ bdsm: (val === 'Yes') }) },
+    { id: 'timer', title: "Use the timer bar?", multi: false,
+      options: ['Off', 'Incremental'],
+      map: (val) => ({ timerMode: (val === 'Incremental') ? 'increment' : 'off' }) }
+  ],
+  answers: {},
+  loadingPct: 0
+};
+
+// ---- Progress hookup to your bootstrap -------------------------------------
+function setBootstrapProgress(p){
+  ob.loadingPct = Math.max(0, Math.min(100, Math.round(p)));
+  const bar = document.getElementById('obProg');
+  const lbl = document.getElementById('obLoad');
+  if(bar) bar.style.width = ob.loadingPct + '%';
+  if(lbl) lbl.textContent = `Loading positions… ${ob.loadingPct}%`;
+}
+
+// ---- Onboarding render ------------------------------------------------------
+function showOnboardingIfNeeded(){
+  try { if(localStorage.getItem(obKey) === 'done') return; } catch(e){}
+  const root = document.getElementById('onboard');
+  if(!root) return;
+  root.classList.remove('hidden');
+  renderStep();
+}
+
+function renderStep(){
+  const step = ob.steps[ob.step];
+  const wrap = document.getElementById('obStepWrap');
+  wrap.innerHTML = '';
+  const el = document.createElement('div'); el.className = 'ob-step';
+  const h = document.createElement('h2'); h.textContent = step.title; el.appendChild(h);
+
+  if(step.range){
+    const rangeWrap = document.createElement('div');
+    const min = document.createElement('input');
+    const max = document.createElement('input');
+    min.type='range'; max.type='range';
+    min.min=step.min; max.min=step.min;
+    min.max=step.max; max.max=step.max;
+    min.value=step.defMin; max.value=step.defMax;
+    min.className='ob-range'; max.className='ob-range';
+    const lbl = document.createElement('p'); lbl.style.margin='8px 0 0'; lbl.style.opacity='.8';
+    function sync(){
+      if(+min.value > +max.value) {
+        if(document.activeElement === min) max.value = min.value; else min.value = max.value;
+      }
+      lbl.textContent = `From ${min.value} to ${max.value}`;
+      ob.answers[step.id] = [ +min.value, +max.value ];
+      updateNextButton();
+    }
+    min.addEventListener('input', sync);
+    max.addEventListener('input', sync);
+    rangeWrap.appendChild(min); rangeWrap.appendChild(max); rangeWrap.appendChild(lbl);
+    el.appendChild(rangeWrap);
+    sync();
+  } else {
+    const grid = document.createElement('div'); grid.className = 'ob-grid';
+    (step.options||[]).forEach(opt=>{
+      const chip = document.createElement('button');
+      chip.type='button'; chip.className='ob-chip';
+      chip.setAttribute('role','button'); chip.setAttribute('aria-pressed','false');
+      chip.textContent = opt;
+      chip.addEventListener('click', ()=>{
+        if(step.multi){
+          const cur = new Set(ob.answers[step.id]||[]);
+          const pressed = chip.getAttribute('aria-pressed')==='true';
+          if(pressed){ cur.delete(opt); chip.setAttribute('aria-pressed','false'); }
+          else { cur.add(opt); chip.setAttribute('aria-pressed','true'); }
+          ob.answers[step.id] = Array.from(cur);
+        } else {
+          grid.querySelectorAll('.ob-chip').forEach(c=>c.setAttribute('aria-pressed','false'));
+          chip.setAttribute('aria-pressed','true');
+          ob.answers[step.id] = opt;
+        }
+        updateNextButton();
+      });
+      grid.appendChild(chip);
+    });
+    el.appendChild(grid);
+  }
+
+  wrap.appendChild(el);
+  updateNavButtons();
+  updateNextButton();
+}
+
+function updateNavButtons(){
+  const back = document.getElementById('obBack');
+  if(back) back.disabled = (ob.step === 0);
+}
+
+function updateNextButton(){
+  const step = ob.steps[ob.step];
+  const next = document.getElementById('obNext');
+  const ans = ob.answers[step.id];
+  const hasAns = step.range ? Array.isArray(ans) && ans.length===2 : (step.multi ? (ans && ans.length>0) : !!ans);
+  if(next){
+    next.textContent = (ob.step === ob.steps.length-1) ? 'Finish' : 'Next';
+    next.disabled = !hasAns;
+  }
+}
+
+function applyAnswersToFilters(){
+  const collected = ob.steps.reduce((acc, s)=>{
+    const raw = ob.answers[s.id];
+    const mapped = s.map ? s.map(raw) : {};
+    return Object.assign(acc, mapped);
+  }, {});
+
+  window.filters = Object.assign(window.filters || {}, {
+    level: collected.level,
+    categories: collected.categories || [],
+    difficultyMin: collected.difficultyMin ?? 1,
+    difficultyMax: collected.difficultyMax ?? 5,
+    bdsm: collected.bdsm ?? false,
+    timerMode: collected.timerMode || 'off'
+  });
+  window.filters.oral = (window.filters.categories||[]).includes('Oral');
+  try{
+    localStorage.setItem(obAnswersKey, JSON.stringify(window.filters));
+    localStorage.setItem(obKey, 'done');
+  }catch(e){}
+}
+
+function closeOnboarding(){
+  const el = document.getElementById('onboard');
+  if(el) el.classList.add('hidden');
+}
+
+function setupOnboardingEvents(){
+  const back = document.getElementById('obBack');
+  const next = document.getElementById('obNext');
+  const skip = document.getElementById('obSkip');
+  if(back) back.addEventListener('click', ()=>{ if(ob.step>0){ ob.step--; renderStep(); } });
+  if(next) next.addEventListener('click', ()=>{
+    const atLast = (ob.step === ob.steps.length-1);
+    if(atLast){ applyAnswersToFilters(); closeOnboarding(); }
+    else { ob.step++; renderStep(); }
+  });
+  if(skip) skip.addEventListener('click', ()=> closeOnboarding());
+}
+
+// ---- Init -------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', ()=>{
+  setupOnboardingEvents();
+  try {
+    const saved = JSON.parse(localStorage.getItem(obAnswersKey)||'null');
+    if(saved){ window.filters = Object.assign(window.filters||{}, saved); }
+  } catch(e){}
+  showOnboardingIfNeeded();
+
+  const btn = document.getElementById('runOnboardBtn');
+  if(btn){
+    btn.addEventListener('click', ()=>{
+      try {
+        localStorage.removeItem('sexySlots.onboarding.v1');
+        localStorage.removeItem('sexySlots.answers.v1');
+      } catch(e){}
+      const ob = document.getElementById('onboard');
+      if(ob) ob.classList.remove('hidden');
+    });
+  }
+});
 </script>
 </body>
 </html>
