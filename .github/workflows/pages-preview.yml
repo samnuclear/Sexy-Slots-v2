@@ -34,3 +34,5 @@ jobs:
         uses: actions/deploy-pages@v4
         with:
           preview: true
+      - name: Show Preview URL
+        run: echo "Preview URL: ${{ steps.deployment.outputs.page_url }}"
