@@ -1,9 +1,7 @@
-name: Pages — Preview (dev/feature/PRs)
+name: Pages — Production (main → root)
 on:
   push:
-    branches: ['dev', 'dev/**', 'feature/**']
-  pull_request:
-    branches: ['dev','main']
+    branches: ['main']
   workflow_dispatch:
 
 permissions:
@@ -12,7 +10,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages-preview-${{ github.head_ref || github.ref_name }}
+  group: 'pages-production'
   cancel-in-progress: true
 
 jobs:
@@ -20,17 +18,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # (no build; single-file app)
       - uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
   deploy:
     environment:
-      name: preview
+      name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
-        with:
-          preview: true
