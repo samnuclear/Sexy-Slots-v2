@@ -149,6 +149,8 @@ header.rig .title{
 .ob-ghost{ background:#232323; color:#eee; }
 .ob-skip{ margin:8px auto 0; display:block; background:none; border:none; color:#aaa; text-decoration:underline; }
 @media (hover:hover){ .ob-chip:hover{ border-color:#3a3a3a; } }
+/* hide legacy loader UI (replaced by onboarding) */
+.legacy-loader, #importBar, #importProgress, #loader, #progressBar, .import-progress, .boot-progress { display: none !important; }
 </style>
 </head>
 <body>
@@ -422,6 +424,20 @@ function poolNow(){ let arr=Object.values(meta).filter(m=>!m.exclude && (m.weigh
   if(state.difficulty) arr=arr.filter(m=>m.difficulty===state.difficulty);
   if(state.hero) arr=arr.filter(m=>m.hero===state.hero);
   if(state.hiso) arr=arr.filter(m=>m.hiso===state.hiso);
+  if(window.filters){
+    if(window.filters.categories && window.filters.categories.length){
+      arr = arr.filter(m=> window.filters.categories.includes(m.category));
+    }
+    const dMin = window.filters.difficultyMin || 1;
+    const dMax = window.filters.difficultyMax || 5;
+    arr = arr.filter(m=>{
+      const d = m.difficulty || 0;
+      return d >= dMin && d <= dMax;
+    });
+    if(window.filters.bdsm === false){
+      arr = arr.filter(m=> m.category !== 'BDSM light');
+    }
+  }
   return arr;
 }
 function weighted(arr){ const sum=arr.reduce((a,b)=>a+(b.weight|0),0); let r=Math.random()*sum; for(const x of arr){ r-=(x.weight|0); if(r<=0) return x; } return arr[0]; }
@@ -823,6 +839,21 @@ function applyAnswersToFilters(){
     localStorage.setItem(obAnswersKey, JSON.stringify(window.filters));
     localStorage.setItem(obKey, 'done');
   }catch(e){}
+
+  // Apply onboarding filters to app state and refresh UI
+  state.oralOnly = !!window.filters.oral;
+  if(window.filters.categories && window.filters.categories.length === 1){
+    state.category = window.filters.categories[0];
+  } else {
+    state.category = 'All';
+  }
+  state.timerMin = window.filters.timerMode === 'increment' ? 1 : 0;
+  saveState();
+  renderSettings();
+  renderWeights();
+  $("#oralPill").textContent = state.oralOnly ? 'ON' : 'OFF';
+  $("#catPill").textContent = state.category;
+  $("#timePill").textContent = state.timerMin ? (state.timerMin+'m') : 'Off';
 }
 
 function closeOnboarding(){
@@ -864,6 +895,23 @@ document.addEventListener('DOMContentLoaded', ()=>{
     });
   }
 });
+</script>
+<script>
+(function(){
+  // Shim legacy loader hooks to onboarding progress
+  const safe = (fn)=>{ try{ fn&&fn(); }catch(e){} };
+  window.showLoader = function(){ /* legacy loader suppressed */ };
+  window.hideLoader = function(){ /* legacy loader suppressed */ };
+
+  // Common legacy function names → delegate to onboarding
+  window.setProgress = function(p){ setBootstrapProgress(p); };
+  window.updateProgress = function(p){ setBootstrapProgress(p); };
+  window.setBootProgress = function(p){ setBootstrapProgress(p); };
+
+  // If any legacy element exists, force-hide it
+  const ids = ['importBar','importProgress','loader','progressBar'];
+  ids.forEach(id=>{ const el=document.getElementById(id); if(el){ el.classList.add('legacy-loader'); el.style.display='none'; }});
+})();
 </script>
 </body>
 </html>
