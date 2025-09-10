@@ -1,4 +1,6 @@
 name: Pages — Preview (dev/feature/PRs)
+
+# Triggers: pushes to dev/feature and PRs; manual run supported
 on:
   push:
     branches: ['dev', 'dev/**', 'feature/**']
@@ -19,20 +21,27 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/upload-pages-artifact@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload artifact for Pages
+        uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
+
   deploy:
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: preview
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
       - id: deployment
+        name: Deploy to Pages (preview)
         uses: actions/deploy-pages@v4
         with:
           preview: true
+
       - name: Show Preview URL
-        run: echo "Preview URL: ${{ steps.deployment.outputs.page_url }}"
+        run: |
+          echo "Preview URL: ${{ steps.deployment.outputs.page_url }}"
