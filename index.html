@@ -290,6 +290,58 @@ header.rig .title{
 </div>
 
 <script>
+  // Force re-run of onboarding and cache bust data requests
+  const APP_VERSION = '2025-11-05-1';
+  const OB_VERSION = 'v2';
+</script>
+
+<script>
+  (function(){
+    // Wrap fetch URL with a version param to bust CDN cache for CSV and images
+    function withVer(u){
+      try {
+        const url = new URL(u, location.href);
+        if(!url.searchParams.has('v')) url.searchParams.set('v', APP_VERSION);
+        return url.toString();
+      } catch(e){
+        // relative path fallback
+        const sep = u.includes('?') ? '&' : '?';
+        return u + sep + 'v=' + APP_VERSION;
+      }
+    }
+
+    // Patch CSV/image loaders if present
+    if(!window.__versionPatched){
+      window.__versionPatched = true;
+
+      // Common: loadCSV(url) -> ensure it calls fetch(withVer(url))
+      if(typeof window.loadCSV === 'function'){
+        const _loadCSV = window.loadCSV;
+        window.loadCSV = async function(url, ...rest){
+          try { url = withVer(url); } catch(e){}
+          return _loadCSV.call(this, url, ...rest);
+        };
+      }
+
+      // Image preloader: intercept new Image().src or your own preloader if exposed
+      const _Image = window.Image;
+      window.Image = function(){
+        const img = new _Image();
+        const _set = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src').set;
+        Object.defineProperty(img, 'src', {
+          set(v){ _set.call(img, withVer(v)); },
+          get(){ return img.getAttribute('src'); }
+        });
+        return img;
+      };
+      window.Image.prototype = _Image.prototype;
+    }
+
+    window.withVer = withVer;
+  })();
+</script>
+
+<script>
 /* ===== State & Persistence ===== */
 const CATS=["Missionary","Woman-on-top","Oral for Her","Oral for Him","Sitting","Standing","Side-by-Side","Deep Penetration","69","Rear Entry","BDSM for Lovers","Adventurous"];
 const ALL_CATS=["All","Unassigned",...CATS];
@@ -440,58 +492,52 @@ function poolNow(){
 }
 
 (function(){
+  const DBG = true;
+  const log = (...a)=>{ if(DBG) console.log('[SexySlots]', ...a); };
+
   function norm(s){ return (s||'').toString().trim().toLowerCase(); }
-  const CAT_ALIAS = {
-    oral: ['oral for her','oral for him','69'],
-    missionary: ['missionary'],
-    doggy: ['rear entry'],
-    standing: ['standing'],
-    riding: ['woman-on-top','sitting'],
-    anal: ['deep penetration','adventurous']
-  };
   function inSelectedCategory(rowCat, selected){
-    if(!selected || selected.length===0) return true;
+    if(!selected || selected.length===0) return true; // no selection => allow all
     const c = norm(rowCat);
-    return selected.some(x => {
-      const key = norm(x);
-      if(!key) return false;
-      if(c === key) return true;
-      if(c.includes(key)) return true;
-      const alias = CAT_ALIAS[key];
-      return Array.isArray(alias) && alias.some(a => c === norm(a));
-    });
+    return selected.some(x => norm(x) === c);
   }
 
   window.applySexySlotsFilters = function(rows, f){
-    const rowsArr = Array.isArray(rows) ? rows : [];
+    const rowsList = Array.isArray(rows) ? rows : [];
     const filt = f || window.filters || {};
     const maxDiff = +filt.difficultyMax || 5;
     const wantCats = Array.isArray(filt.categories) ? filt.categories : [];
     const allowBDSM = !!filt.bdsm;
 
-    let out = rowsArr.filter(r=>{
-      const rowCat = r.category ?? r.Category ?? r.cat;
+    let out = rowsList.filter(r=>{
+      const rowCat = r.category ?? r.Category ?? r.cat ?? '';
       const rowDiff = +(r.difficulty ?? r.Difficulty ?? 1);
+
       if(isFinite(rowDiff) && rowDiff > maxDiff) return false;
       if(!inSelectedCategory(rowCat, wantCats)) return false;
-      if(!allowBDSM && norm(rowCat).includes('bdsm')) return false;
+      if(!allowBDSM && norm(rowCat) === 'bdsm') return false;
       if(String(r.exclude||'').toLowerCase() === 'true') return false;
+
       return true;
     });
 
-    if(out.length === 0) out = rowsArr.slice();
-
+    if(out.length === 0){
+      log('Filter empty; falling back to ALL', {filt});
+      out = rowsList.slice();
+    } else {
+      log('Filter result', { size: out.length, maxDiff, wantCats, allowBDSM });
+    }
     return out;
   };
 
+  // Pool rebuild helper, used by onboarding finish and settings changes
   if(!window.rebuildSpinPool){
     window.rebuildSpinPool = function(){
       try{
-        const all = (typeof window.buildBasePool === 'function')
-          ? window.buildBasePool()
-          : (window.positions || window.allPositions || (typeof meta !== 'undefined' ? Object.values(meta) : []));
+        const all = (window.positions || window.allPositions || basePool() || Object.values(meta||{}));
         const filtered = window.applySexySlotsFilters(all, window.filters);
         window.currentPool = filtered;
+        log('Pool rebuilt', { total: all.length, filtered: filtered.length });
         window.dispatchEvent(new CustomEvent('pool:rebuilt', { detail: { size: filtered.length }}));
       }catch(e){ console.error('rebuildSpinPool failed', e); }
     };
@@ -501,13 +547,14 @@ function weighted(arr){ const sum=arr.reduce((a,b)=>a+(b.weight|0),0); let r=Mat
 function randOther(pool,notId){ const cand=pool.filter(m=>m.id!==notId); return (cand[Math.floor(Math.random()*cand.length)]||pool[0]||{id:notId}).id; }
 
 function spin(){
-  let allRows = basePool();
-  let pool = typeof window.applySexySlotsFilters === 'function'
-    ? window.applySexySlotsFilters(allRows, window.filters)
-    : allRows.slice();
+  const all = (window.positions || window.allPositions || basePool());
+  let pool = (window.currentPool && window.currentPool.length)
+    ? window.currentPool
+    : (typeof window.applySexySlotsFilters === 'function'
+        ? window.applySexySlotsFilters(all, window.filters)
+        : Array.isArray(all) ? all.slice() : []);
   if(!pool || pool.length === 0){
-    console.warn('Filters produced empty pool; falling back to all');
-    pool = allRows.slice();
+    pool = Array.isArray(all) ? all.slice() : [];
   }
   if(!pool || pool.length === 0){toast("No images match filters");return;}
   window.currentPool = pool;
@@ -677,7 +724,7 @@ async function loadCSVAndImages({reset=false}={}){
   const setMsg=t=>ov.querySelector('#csvmsg').textContent=t;
   const setPct=n=>ov.querySelector('#csvbar').style.width=Math.max(0,Math.min(100,n))+'%';
   try{
-    const csvText=await (await fetch(CSV_PATH,{cache:'no-cache'})).text();
+    const csvText=await (await fetch(withVer(CSV_PATH),{cache:'no-cache'})).text();
     const rows=parseCSV(csvText); if(!rows.length){ setMsg('CSV empty'); await sleep(700); return; }
     let done=0;
     for(const r of rows){
@@ -739,7 +786,7 @@ async function resolveImageCandidates(cell){
   return out;
 }
 async function fetchFirstWorkingBlob(urls){
-  for(const u of urls){ try{ const r=await fetch(u,{cache:'no-cache'}); if(r.ok){ const b=await r.blob(); if(b&&b.size>0) return b; } }catch(e){} }
+  for(const u of urls){ try{ const r=await fetch(withVer(u),{cache:'no-cache'}); if(r.ok){ const b=await r.blob(); if(b&&b.size>0) return b; } }catch(e){} }
   return null;
 }
 async function storeBlob(id,blob){ try{ await idbPut(id,blob); }catch(e){ memBlobs.set(id,blob); } }
@@ -763,7 +810,6 @@ const nextFrame=()=>new Promise(r=>requestAnimationFrame(r));
 </script>
 <script>
 // ---- Onboarding Config ------------------------------------------------------
-const OB_VERSION = 'v1';
 const obKey = 'sexySlots.onboarding.' + OB_VERSION;
 const obAnswersKey = 'sexySlots.answers.' + OB_VERSION;
 
@@ -906,7 +952,7 @@ function applyAnswersToFilters(){
 
   try{
     localStorage.setItem(obAnswersKey, JSON.stringify(window.filters));
-    localStorage.setItem(obKey, 'done');
+    localStorage.setItem('sexySlots.onboarding.' + OB_VERSION, 'done');
   }catch(e){}
 
   state.timerMin = window.filters.timerMode === 'increment' ? 1 : 0;
@@ -956,6 +1002,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
       try {
         localStorage.removeItem('sexySlots.onboarding.v1');
         localStorage.removeItem('sexySlots.answers.v1');
+        localStorage.removeItem(obKey);
+        localStorage.removeItem(obAnswersKey);
       } catch(e){}
       const ob = document.getElementById('onboard');
       if(ob) ob.classList.remove('hidden');
@@ -965,11 +1013,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 <script>
 (function(){
-  // Route any old progress calls to onboarding bar and suppress legacy UI.
-  window.setProgress = window.updateProgress = window.setBootProgress = function(p){ try{ setBootstrapProgress(p); }catch(e){} };
-  window.showLoader = function(){ /* suppressed */ };
-  window.hideLoader = function(){ /* suppressed */ };
-  // Force hide if any stray legacy nodes exist
+  window.setProgress = window.updateProgress = window.setBootProgress = function(p){
+    try{ setBootstrapProgress(p); }catch(e){}
+  };
+  window.showLoader = function(){};
+  window.hideLoader = function(){};
   ['importBar','importProgress','loader','progressBar'].forEach(id=>{
     const el = document.getElementById(id); if(el) el.style.display='none';
   });
