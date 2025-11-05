@@ -149,11 +149,14 @@ header.rig .title{
 .ob-ghost{ background:#232323; color:#eee; }
 .ob-skip{ margin:8px auto 0; display:block; background:none; border:none; color:#aaa; text-decoration:underline; }
 @media (hover:hover){ .ob-chip:hover{ border-color:#3a3a3a; } }
-/* Hide legacy loader UI (replaced by onboarding progress) */
+/* Hide legacy loader UI */
 .legacy-loader, #importBar, #importProgress, #loader, #progressBar, .import-progress, .boot-progress { display: none !important; }
 </style>
 </head>
 <body>
+<div id="buildBadge" style="position:fixed;right:8px;bottom:8px;padding:6px 8px;background:rgba(0,0,0,.55);color:#fff;border-radius:8px;font:12px/1.2 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial;z-index:99999;">
+  DEV • <span id="buildVer"></span>
+</div>
 <!-- Onboarding / Welcome Overlay -->
 <div id="onboard" class="ob hidden">
   <div class="ob-card">
@@ -290,9 +293,49 @@ header.rig .title{
 </div>
 
 <script>
-  // Force re-run of onboarding and cache bust data requests
-  const APP_VERSION = '2025-11-05-1';
-  const OB_VERSION = 'v2';
+  // Bump to force fresh code + onboarding once more
+  window.APP_VERSION = 'dev-2025-11-05-3';
+  window.OB_VERSION  = 'v3';
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const el = document.getElementById('buildVer');
+    if (el) el.textContent = window.APP_VERSION;
+  });
+  // Unregister SW + bust caches when ?nocache=1 is present
+  (function(){
+    const qp = new URLSearchParams(location.search);
+    if (qp.has('nocache') || qp.has('bypasssw')) {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
+      }
+      const _fetch = window.fetch;
+      window.fetch = function(input, init={}){
+        try{
+          const u = new URL(typeof input==='string' ? input : input.url, location.href);
+          u.searchParams.set('v', window.APP_VERSION);
+          init = Object.assign({ cache: 'no-store' }, init);
+          return _fetch(u.toString(), init);
+        }catch(e){
+          return _fetch(input, Object.assign({ cache: 'no-store' }, init));
+        }
+      };
+      const _Image = window.Image;
+      window.Image = function(){
+        const img = new _Image();
+        const set = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src').set;
+        Object.defineProperty(img, 'src', {
+          set(v){
+            try{
+              const u = new URL(v, location.href);
+              u.searchParams.set('v', window.APP_VERSION);
+              set.call(img, u.toString());
+            }catch(e){ set.call(img, v); }
+          }
+        });
+        return img;
+      };
+      console.log('[SexySlots] nocache mode active');
+    }
+  })();
 </script>
 
 <script>
@@ -301,12 +344,12 @@ header.rig .title{
     function withVer(u){
       try {
         const url = new URL(u, location.href);
-        if(!url.searchParams.has('v')) url.searchParams.set('v', APP_VERSION);
+        if(!url.searchParams.has('v')) url.searchParams.set('v', window.APP_VERSION);
         return url.toString();
       } catch(e){
         // relative path fallback
         const sep = u.includes('?') ? '&' : '?';
-        return u + sep + 'v=' + APP_VERSION;
+        return u + sep + 'v=' + window.APP_VERSION;
       }
     }
 
@@ -810,8 +853,8 @@ const nextFrame=()=>new Promise(r=>requestAnimationFrame(r));
 </script>
 <script>
 // ---- Onboarding Config ------------------------------------------------------
-const obKey = 'sexySlots.onboarding.' + OB_VERSION;
-const obAnswersKey = 'sexySlots.answers.' + OB_VERSION;
+const obKey = 'sexySlots.onboarding.' + window.OB_VERSION;
+const obAnswersKey = 'sexySlots.answers.' + window.OB_VERSION;
 
 const ob = {
   step: 0,
@@ -952,7 +995,7 @@ function applyAnswersToFilters(){
 
   try{
     localStorage.setItem(obAnswersKey, JSON.stringify(window.filters));
-    localStorage.setItem('sexySlots.onboarding.' + OB_VERSION, 'done');
+    localStorage.setItem('sexySlots.onboarding.' + window.OB_VERSION, 'done');
   }catch(e){}
 
   state.timerMin = window.filters.timerMode === 'increment' ? 1 : 0;

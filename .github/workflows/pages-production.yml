@@ -1,8 +1,8 @@
-name: Pages — Production (main → root)
+name: Pages — Production (dev → root)
 on:
   push:
-    branches: ['main']
-  workflow_dispatch:  # allow manual "Run workflow" on main
+    branches: ['dev']
+  workflow_dispatch:  # allow manual "Run workflow" on dev
 
 permissions:
   contents: read
