@@ -149,7 +149,7 @@ header.rig .title{
 .ob-ghost{ background:#232323; color:#eee; }
 .ob-skip{ margin:8px auto 0; display:block; background:none; border:none; color:#aaa; text-decoration:underline; }
 @media (hover:hover){ .ob-chip:hover{ border-color:#3a3a3a; } }
-/* hide legacy loader UI (replaced by onboarding) */
+/* Hide legacy loader UI (replaced by onboarding progress) */
 .legacy-loader, #importBar, #importProgress, #loader, #progressBar, .import-progress, .boot-progress { display: none !important; }
 </style>
 </head>
@@ -417,34 +417,100 @@ function renderWeights(){
 let spinning=false, timerId=null, remain=0;
 $("#spin").addEventListener("click",()=>{ if(!spinning && !timerId) spin(); });
 
-function poolNow(){ let arr=Object.values(meta).filter(m=>!m.exclude && (m.weight|0)>0);
+function basePool(){
+  let arr=Object.values(meta).filter(m=>!m.exclude && (m.weight|0)>0);
   if(state.oralOnly) arr=arr.filter(m=>m.category==="Oral for Her"||m.category==="Oral for Him");
   if(state.category==="Unassigned") arr=arr.filter(m=>!m.category);
   else if(state.category!=="All") arr=arr.filter(m=>m.category===state.category);
   if(state.difficulty) arr=arr.filter(m=>m.difficulty===state.difficulty);
   if(state.hero) arr=arr.filter(m=>m.hero===state.hero);
   if(state.hiso) arr=arr.filter(m=>m.hiso===state.hiso);
-  if(window.filters){
-    if(window.filters.categories && window.filters.categories.length){
-      arr = arr.filter(m=> window.filters.categories.includes(m.category));
-    }
-    const dMin = window.filters.difficultyMin || 1;
-    const dMax = window.filters.difficultyMax || 5;
-    arr = arr.filter(m=>{
-      const d = m.difficulty || 0;
-      return d >= dMin && d <= dMax;
-    });
-    if(window.filters.bdsm === false){
-      arr = arr.filter(m=> m.category !== 'BDSM light');
-    }
-  }
   return arr;
 }
+
+window.buildBasePool = basePool;
+
+function poolNow(){
+  const base = basePool();
+  const filtered = typeof window.applySexySlotsFilters === 'function'
+    ? window.applySexySlotsFilters(base, window.filters)
+    : base;
+  window.currentPool = filtered;
+  return filtered;
+}
+
+(function(){
+  function norm(s){ return (s||'').toString().trim().toLowerCase(); }
+  const CAT_ALIAS = {
+    oral: ['oral for her','oral for him','69'],
+    missionary: ['missionary'],
+    doggy: ['rear entry'],
+    standing: ['standing'],
+    riding: ['woman-on-top','sitting'],
+    anal: ['deep penetration','adventurous']
+  };
+  function inSelectedCategory(rowCat, selected){
+    if(!selected || selected.length===0) return true;
+    const c = norm(rowCat);
+    return selected.some(x => {
+      const key = norm(x);
+      if(!key) return false;
+      if(c === key) return true;
+      if(c.includes(key)) return true;
+      const alias = CAT_ALIAS[key];
+      return Array.isArray(alias) && alias.some(a => c === norm(a));
+    });
+  }
+
+  window.applySexySlotsFilters = function(rows, f){
+    const rowsArr = Array.isArray(rows) ? rows : [];
+    const filt = f || window.filters || {};
+    const maxDiff = +filt.difficultyMax || 5;
+    const wantCats = Array.isArray(filt.categories) ? filt.categories : [];
+    const allowBDSM = !!filt.bdsm;
+
+    let out = rowsArr.filter(r=>{
+      const rowCat = r.category ?? r.Category ?? r.cat;
+      const rowDiff = +(r.difficulty ?? r.Difficulty ?? 1);
+      if(isFinite(rowDiff) && rowDiff > maxDiff) return false;
+      if(!inSelectedCategory(rowCat, wantCats)) return false;
+      if(!allowBDSM && norm(rowCat).includes('bdsm')) return false;
+      if(String(r.exclude||'').toLowerCase() === 'true') return false;
+      return true;
+    });
+
+    if(out.length === 0) out = rowsArr.slice();
+
+    return out;
+  };
+
+  if(!window.rebuildSpinPool){
+    window.rebuildSpinPool = function(){
+      try{
+        const all = (typeof window.buildBasePool === 'function')
+          ? window.buildBasePool()
+          : (window.positions || window.allPositions || (typeof meta !== 'undefined' ? Object.values(meta) : []));
+        const filtered = window.applySexySlotsFilters(all, window.filters);
+        window.currentPool = filtered;
+        window.dispatchEvent(new CustomEvent('pool:rebuilt', { detail: { size: filtered.length }}));
+      }catch(e){ console.error('rebuildSpinPool failed', e); }
+    };
+  }
+})();
 function weighted(arr){ const sum=arr.reduce((a,b)=>a+(b.weight|0),0); let r=Math.random()*sum; for(const x of arr){ r-=(x.weight|0); if(r<=0) return x; } return arr[0]; }
 function randOther(pool,notId){ const cand=pool.filter(m=>m.id!==notId); return (cand[Math.floor(Math.random()*cand.length)]||pool[0]||{id:notId}).id; }
 
 function spin(){
-  const pool=poolNow(); if(pool.length===0){toast("No images match filters");return;}
+  let allRows = basePool();
+  let pool = typeof window.applySexySlotsFilters === 'function'
+    ? window.applySexySlotsFilters(allRows, window.filters)
+    : allRows.slice();
+  if(!pool || pool.length === 0){
+    console.warn('Filters produced empty pool; falling back to all');
+    pool = allRows.slice();
+  }
+  if(!pool || pool.length === 0){toast("No images match filters");return;}
+  window.currentPool = pool;
   let chosen; if(state.rig && state.flows[state.flowIndex].length){ const id=state.flows[state.flowIndex].shift(); chosen=meta[id]; saveState(); renderFlowList(); } else { chosen=weighted(pool); }
 
   spinning=true; $("#spin").disabled=true;
@@ -707,17 +773,21 @@ const ob = {
     { id: 'level', title: "What's your level?", multi: false,
       options: ['Beginner', 'Intermediate', 'Advanced'],
       map: (val) => ({ level: val }) },
-    { id: 'categories', title: "What are you into?", multi: true,
-      options: ['Oral', 'Missionary', 'Doggy', 'Standing', 'Riding', 'Anal', 'BDSM light'],
-      map: (vals) => ({ categories: vals }) },
-    { id: 'difficulty', title: "Choose difficulty range", range: true,
+
+    { id: 'categories', title: "Pick categories you like", multi: true,
+      options: ['Oral','Missionary','Doggy','Standing','Riding','Anal'],
+      map: (vals) => ({ categories: vals||[] }) },
+
+    { id: 'difficultyMax', title: "Max difficulty you want", range: true,
       min: 1, max: 5, defMin: 1, defMax: 3,
-      map: (minmax) => ({ difficultyMin: minmax[0], difficultyMax: minmax[1] }) },
-    { id: 'bdsm', title: "BDSM content?", multi: false,
-      options: ['No', 'Yes'],
+      map: (minmax) => ({ difficultyMax: Array.isArray(minmax) ? +minmax[1] : +minmax }) },
+
+    { id: 'bdsm', title: "Include BDSM positions?", multi: false,
+      options: ['No','Yes'],
       map: (val) => ({ bdsm: (val === 'Yes') }) },
+
     { id: 'timer', title: "Use the timer bar?", multi: false,
-      options: ['Off', 'Incremental'],
+      options: ['Off','Incremental'],
       map: (val) => ({ timerMode: (val === 'Incremental') ? 'increment' : 'off' }) }
   ],
   answers: {},
@@ -763,7 +833,7 @@ function renderStep(){
       if(+min.value > +max.value) {
         if(document.activeElement === min) max.value = min.value; else min.value = max.value;
       }
-      lbl.textContent = `From ${min.value} to ${max.value}`;
+      lbl.textContent = `Max ${max.value}`;
       ob.answers[step.id] = [ +min.value, +max.value ];
       updateNextButton();
     }
@@ -828,31 +898,21 @@ function applyAnswersToFilters(){
 
   window.filters = Object.assign(window.filters || {}, {
     level: collected.level,
-    categories: collected.categories || [],
-    difficultyMin: collected.difficultyMin ?? 1,
+    categories: (collected.categories||[]),
     difficultyMax: collected.difficultyMax ?? 5,
     bdsm: collected.bdsm ?? false,
     timerMode: collected.timerMode || 'off'
   });
-  window.filters.oral = (window.filters.categories||[]).includes('Oral');
+
   try{
     localStorage.setItem(obAnswersKey, JSON.stringify(window.filters));
     localStorage.setItem(obKey, 'done');
   }catch(e){}
 
-  // Apply onboarding filters to app state and refresh UI
-  state.oralOnly = !!window.filters.oral;
-  if(window.filters.categories && window.filters.categories.length === 1){
-    state.category = window.filters.categories[0];
-  } else {
-    state.category = 'All';
-  }
   state.timerMin = window.filters.timerMode === 'increment' ? 1 : 0;
   saveState();
   renderSettings();
   renderWeights();
-  $("#oralPill").textContent = state.oralOnly ? 'ON' : 'OFF';
-  $("#catPill").textContent = state.category;
   $("#timePill").textContent = state.timerMin ? (state.timerMin+'m') : 'Off';
 }
 
@@ -868,7 +928,12 @@ function setupOnboardingEvents(){
   if(back) back.addEventListener('click', ()=>{ if(ob.step>0){ ob.step--; renderStep(); } });
   if(next) next.addEventListener('click', ()=>{
     const atLast = (ob.step === ob.steps.length-1);
-    if(atLast){ applyAnswersToFilters(); closeOnboarding(); }
+    if(atLast){
+      applyAnswersToFilters();
+      if (typeof window.rebuildSpinPool === 'function') { window.rebuildSpinPool(); }
+      window.dispatchEvent(new CustomEvent('filters:changed', { detail: window.filters }));
+      closeOnboarding();
+    }
     else { ob.step++; renderStep(); }
   });
   if(skip) skip.addEventListener('click', ()=> closeOnboarding());
@@ -882,6 +947,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(saved){ window.filters = Object.assign(window.filters||{}, saved); }
   } catch(e){}
   showOnboardingIfNeeded();
+
+  if (typeof window.rebuildSpinPool === 'function') { window.rebuildSpinPool(); }
 
   const btn = document.getElementById('runOnboardBtn');
   if(btn){
@@ -898,19 +965,14 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 <script>
 (function(){
-  // Shim legacy loader hooks to onboarding progress
-  const safe = (fn)=>{ try{ fn&&fn(); }catch(e){} };
-  window.showLoader = function(){ /* legacy loader suppressed */ };
-  window.hideLoader = function(){ /* legacy loader suppressed */ };
-
-  // Common legacy function names → delegate to onboarding
-  window.setProgress = function(p){ setBootstrapProgress(p); };
-  window.updateProgress = function(p){ setBootstrapProgress(p); };
-  window.setBootProgress = function(p){ setBootstrapProgress(p); };
-
-  // If any legacy element exists, force-hide it
-  const ids = ['importBar','importProgress','loader','progressBar'];
-  ids.forEach(id=>{ const el=document.getElementById(id); if(el){ el.classList.add('legacy-loader'); el.style.display='none'; }});
+  // Route any old progress calls to onboarding bar and suppress legacy UI.
+  window.setProgress = window.updateProgress = window.setBootProgress = function(p){ try{ setBootstrapProgress(p); }catch(e){} };
+  window.showLoader = function(){ /* suppressed */ };
+  window.hideLoader = function(){ /* suppressed */ };
+  // Force hide if any stray legacy nodes exist
+  ['importBar','importProgress','loader','progressBar'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.style.display='none';
+  });
 })();
 </script>
 </body>
