@@ -144,13 +144,19 @@ header.rig .title{
 .ob-chip{ padding:10px 12px; border:1px solid #2a2a2a; border-radius:12px; background:#191919; text-align:center; user-select:none; }
 .ob-chip[aria-pressed="true"]{ border-color:#4ade80; background:#1f2a22; }
 .ob-range{ width:100%; }
+.ob-range-label{ margin-bottom:8px; font-weight:600; }
 .ob-actions{ display:flex; gap:8px; margin-top:8px; }
 .ob-btn{ flex:1; padding:12px; border:none; border-radius:12px; background:#4ade80; color:#08210f; font-weight:600; }
 .ob-ghost{ background:#232323; color:#eee; }
 .ob-skip{ margin:8px auto 0; display:block; background:none; border:none; color:#aaa; text-decoration:underline; }
 @media (hover:hover){ .ob-chip:hover{ border-color:#3a3a3a; } }
-/* Hide legacy loader UI (superseded by onboarding) */
-.legacy-loader, #importBar, #importProgress, #loader, #progressBar, .import-progress, .boot-progress { display:none !important; }
+/* PERMA-HIDE legacy import overlay */
+.legacy-loader, #importOverlay, #importBar, #importProgress, #loader, #progressBar, .import-overlay, .import-progress, .boot-progress, .loading-overlay {
+  display:none !important;
+  visibility:hidden !important;
+  opacity:0 !important;
+  pointer-events:none !important;
+}
 </style>
 </head>
 <body>
@@ -539,55 +545,41 @@ function poolNow(){
 
 // Filters handled via helper script below
 (function(){
-  // Normalizers
   const norm = s => (s||'').toString().trim().toLowerCase();
-  const aliasMap = {
-    oral: ['oral for her','oral for him','69'],
-    doggy: ['rear entry'],
-    riding: ['woman-on-top','sitting'],
-    anal: ['deep penetration'],
+  const any  = a => Array.isArray(a) && a.length>0;
+
+  window.filters = Object.assign({},
+    window.filters || { level:null, categories:[], difficultyMax:5, bdsm:false, timerMode:'off', oral:false });
+
+  const alias = {
+    oral: ['oral','oral for her','oral for him','69'],
     bdsm: ['bdsm','bdsm for lovers'],
-    missionary: ['missionary'],
-    standing: ['standing']
+    doggy: ['rear entry'],
+    riding: ['woman-on-top'],
+    anal: ['deep penetration'],
+    standing: ['standing'],
+    missionary: ['missionary']
   };
 
-  // Global filters structure
-  window.filters = window.filters || { level:null, categories:[], difficultyMax:5, bdsm:false, timerMode:'off', oral:false };
-
-  // Apply filters to raw rows
   window.applySexySlotsFilters = function(rows, f=window.filters){
-    const maxDiff = +f.difficultyMax || 5;
-    const wantCats = (f.categories||[]).map(norm);
-    const wantSet = new Set(wantCats);
-    const allowBDSM = !!f.bdsm;
-
-    const matchesCategory = cat => {
-      if (!wantSet.size) return true;
-      if (wantSet.has('all')) return true;
-      if (wantSet.has(cat)) return true;
-      for (const [key, aliases] of Object.entries(aliasMap)){
-        if (wantSet.has(key) && aliases.includes(cat)) return true;
-      }
-      return false;
-    };
-
-    const isBDSMCategory = cat => {
-      if (!cat) return false;
-      if (cat === 'bdsm' || cat.startsWith('bdsm')) return true;
-      return aliasMap.bdsm.includes(cat);
-    };
+    const maxD   = +f.difficultyMax || 5;
+    const want   = (f.categories||[]).map(norm);
+    const allowB = !!f.bdsm;
+    const wantSet = new Set();
+    want.forEach(w=>{
+      wantSet.add(w);
+      Object.entries(alias).forEach(([key,vals])=>{
+        if (w===key) vals.forEach(v=>wantSet.add(v));
+      });
+    });
 
     let out = (Array.isArray(rows)?rows:[]).filter(r=>{
-      const cat = norm(r.category ?? r.Category ?? '');
+      const cat  = norm(r.category ?? r.Category ?? '');
       const diff = +(r.difficulty ?? r.Difficulty ?? 1);
-
-      if (Number.isFinite(diff) && diff > maxDiff) return false;
-
-      if (!matchesCategory(cat)) return false;
-      if (!allowBDSM && isBDSMCategory(cat)) return false;
-
+      if (Number.isFinite(diff) && diff > maxD) return false;
+      if (any(want) && !wantSet.has(cat)) return false;
+      if (!allowB && (cat==='bdsm' || cat==='bdsm for lovers')) return false;
       if (norm(r.exclude)==='true') return false;
-
       return true;
     });
 
@@ -595,24 +587,22 @@ function poolNow(){
     return out;
   };
 
-  // Build/refresh current pool
   if (!window.rebuildSpinPool) {
     window.rebuildSpinPool = function(){
       const all = (window.positions || window.allPositions || basePool() || Object.values(meta||{}));
       window.currentPool = window.applySexySlotsFilters(all, window.filters);
       window.dispatchEvent(new CustomEvent('pool:rebuilt', { detail:{ size: window.currentPool.length }}));
-      console.log('[SexySlots] Pool rebuilt:', { total: all.length, filtered: window.currentPool.length, filters: window.filters });
+      console.log('[SexySlots] Pool rebuilt', {filters:window.filters, size:window.currentPool.length, total:all.length});
     };
   }
 
-  // Ensure spin() uses filtered pool
   const _spin = window.spin;
-  window.spin = function(...args){
-    try {
+  window.spin = function(...a){
+    try{
       if (!window.currentPool || !window.currentPool.length) window.rebuildSpinPool();
-      window.__spinPool = window.currentPool && window.currentPool.length ? window.currentPool : (window.positions||[]);
-    } catch(e){ console.warn('spin pool fallback', e); }
-    return _spin ? _spin.apply(this, args) : undefined;
+      window.__spinPool = window.currentPool?.length ? window.currentPool : (window.positions||[]);
+    }catch(e){}
+    return _spin ? _spin.apply(this,a) : undefined;
   };
 })();
 function weighted(arr){ const sum=arr.reduce((a,b)=>a+(b.weight|0),0); let r=Math.random()*sum; for(const x of arr){ r-=(x.weight|0); if(r<=0) return x; } return arr[0]; }
@@ -625,7 +615,7 @@ function spin(){
     ? window.applySexySlotsFilters(allRows, window.filters)
     : allRows.slice();
   const safePool = pool && pool.length ? pool : allRows.slice();
-  if(!safePool.length){ toast('No images available'); return; }
+  if(!safePool.length){ return; }
   window.currentPool = safePool;
   const workingPool = safePool;
   let chosen; if(state.rig && state.flows[state.flowIndex].length){ const id=state.flows[state.flowIndex].shift(); chosen=meta[id]; saveState(); renderFlowList(); } else { chosen=weighted(workingPool); }
@@ -698,7 +688,17 @@ function spinTick(){ if(!ac) return; const o=ac.createOscillator(), g=ac.createG
 function chime(){ if(!ac) return; const o=ac.createOscillator(), g=ac.createGain(); o.type='sine'; o.frequency.setValueAtTime(880, ac.currentTime); g.gain.value=.12; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+.22); }
 
 /* top controls + pickers */
-$("#oralCtrl").addEventListener("click",()=>{state.oralOnly=!state.oralOnly;$("#oralPill").textContent=state.oralOnly?'ON':'OFF';saveState();});
+$("#oralCtrl").addEventListener("click",()=>{
+  const cats = Array.isArray(window.filters?.categories) ? window.filters.categories.slice() : [];
+  const hasOral = cats.some(c=>String(c).toLowerCase().includes('oral'));
+  if(hasOral){
+    const filtered = cats.filter(c=>!String(c).toLowerCase().includes('oral'));
+    mergeFilters({ categories: filtered });
+  } else {
+    cats.push('Oral for Her','Oral for Him');
+    mergeFilters({ categories: Array.from(new Set(cats)) });
+  }
+});
 $("#catCtrl").addEventListener("click",showCategoryPicker);
 $("#diffCtrl").addEventListener("click",()=>showRatingPicker('difficulty','Difficulty','#diffPill'));
 $("#heroCtrl").addEventListener("click",()=>showRatingPicker('hero','Her-O','#heroPill'));
@@ -715,10 +715,48 @@ function showRatingPicker(key,label,pill){
 function showCategoryPicker(){
   const ov=document.createElement('div'); ov.className='overlay show';
   const sheet=document.createElement('div'); sheet.className='sheet'; sheet.style.inset='calc(env(safe-area-inset-top) + 2rem) .8rem 1.2rem';
-  sheet.innerHTML=`<header><div class="small">Choose Category</div><button class="btn" id="cpClose">Close</button></header><div class="content" id="cpList"></div>`;
+  sheet.innerHTML=`<header><div class="small">Choose Categories</div><button class="btn" id="cpClose">Close</button></header><div class="content" id="cpList"></div>`;
   ov.appendChild(sheet); document.body.appendChild(ov);
   $("#cpClose").onclick=()=>ov.remove();
-  const list=$("#cpList"); ALL_CATS.forEach(c=>{ const b=document.createElement('button'); b.className='btn'; b.style.cssText='display:block;width:100%;text-align:left;margin:.25rem 0'; b.textContent=(c===state.category?'✓ ':'')+c; b.onclick=()=>{state.category=c; saveState(); $("#catPill").textContent=c; ov.remove();}; list.appendChild(b); });
+
+  const list=$("#cpList");
+  list.style.display='flex';
+  list.style.flexDirection='column';
+  list.style.gap='.35rem';
+
+  const render = ()=>{
+    list.innerHTML='';
+    const current = Array.isArray(window.filters?.categories) ? window.filters.categories : [];
+    const selected = new Set(current.map(c=>String(c).toLowerCase()));
+
+    const allBtn=document.createElement('button');
+    allBtn.className='btn';
+    allBtn.style.cssText='display:block;width:100%;text-align:left;margin:.1rem 0;background:#2a2a36;color:#fff;';
+    allBtn.textContent = selected.size ? 'All (clear selections)' : 'All';
+    allBtn.addEventListener('click',()=>{ mergeFilters({ categories: [] }); render(); });
+    list.appendChild(allBtn);
+
+    CATS.forEach(name=>{
+      const btn=document.createElement('button');
+      btn.className='btn';
+      btn.style.cssText='display:block;width:100%;text-align:left;margin:0;';
+      const isOn = selected.has(name.toLowerCase());
+      btn.textContent = (isOn?'✓ ':'') + name;
+      btn.style.background = isOn ? 'var(--gold)' : '#2a2a36';
+      btn.style.color = isOn ? '#000' : '#fff';
+      btn.addEventListener('click',()=>{
+        const currentCats = Array.isArray(window.filters?.categories) ? window.filters.categories.slice() : [];
+        const idx = currentCats.findIndex(c=>String(c).toLowerCase()===name.toLowerCase());
+        if(idx>=0){ currentCats.splice(idx,1); }
+        else { currentCats.push(name); }
+        mergeFilters({ categories: currentCats });
+        render();
+      });
+      list.appendChild(btn);
+    });
+  };
+
+  render();
 }
 $("#timeCtrl").addEventListener("click", showTimerPicker);
 function showTimerPicker(){
@@ -870,12 +908,22 @@ const nextFrame=()=>new Promise(r=>requestAnimationFrame(r));
 /* boot */
 (async function(){
   await openDB(); loadMeta(); loadState();
-  $("#oralPill").textContent=state.oralOnly?'ON':'OFF';
-  $("#catPill").textContent=state.category;
-  $("#diffPill").textContent=state.difficulty || 'All';
+  if(window.filters){
+    const cats = Array.isArray(window.filters.categories) ? window.filters.categories : [];
+    $("#catPill").textContent = cats.length ? cats.join(', ') : 'All';
+    $("#diffPill").textContent = `≤ ${window.filters.difficultyMax ?? 5}`;
+    $("#timePill").textContent = window.filters.timerMode === 'increment' ? 'Incremental' : 'Off';
+    $("#oralPill").textContent = window.filters.oral ? 'ON' : 'OFF';
+    const oralTgl = document.querySelector('[data-toggle="oral"]');
+    if (oralTgl) oralTgl.setAttribute('data-state', window.filters.oral ? 'on' : 'off');
+  } else {
+    $("#oralPill").textContent=state.oralOnly?'ON':'OFF';
+    $("#catPill").textContent=state.category;
+    $("#diffPill").textContent=state.difficulty || 'All';
+    $("#timePill").textContent = state.timerMin>0 ? 'Incremental' : 'Off';
+  }
   $("#heroPill").textContent=state.hero || 'All';
   $("#hisoPill").textContent=state.hiso || 'All';
-  $("#timePill").textContent = state.timerMin>0 ? 'Incremental' : 'Off';
 })();
 </script>
 <script>
@@ -895,9 +943,8 @@ const ob = {
       options:['Oral','Missionary','Doggy','Standing','Riding','Anal','BDSM'],
       map: vals => ({ categories: vals || [] }) },
 
-    { id: 'difficultyMax', title: "Max difficulty you want", range:true,
-      min:1, max:5, defMin:1, defMax:3,
-      map: mm => ({ difficultyMax: Array.isArray(mm) ? +mm[1] : +mm }) },
+    { id: 'difficultyMax', title: "Max difficulty you want", single:true, min:1, max:5, def:3,
+      map: v => ({ difficultyMax: +v }) },
 
     { id: 'bdsm', title: "Include BDSM positions?", multi:false,
       options:['No','Yes'],
@@ -936,7 +983,28 @@ function renderStep(){
   const el = document.createElement('div'); el.className = 'ob-step';
   const h = document.createElement('h2'); h.textContent = step.title; el.appendChild(h);
 
-  if(step.range){
+  if(step.single){
+    const wrap = document.createElement('div'); wrap.className = 'ob-range';
+    const startVal = ob.answers[step.id] ?? step.def;
+    const lbl = document.createElement('div'); lbl.className = 'ob-range-label'; lbl.textContent = `Max ${startVal}`;
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = step.min;
+    input.max = step.max;
+    input.value = startVal;
+    input.className = 'ob-range';
+    const sync = ()=>{
+      lbl.textContent = `Max ${input.value}`;
+      ob.answers[step.id] = +input.value;
+      updateNextButton();
+    };
+    input.addEventListener('input', sync);
+    wrap.appendChild(lbl);
+    wrap.appendChild(input);
+    el.appendChild(wrap);
+    sync();
+  }
+  else if(step.range){
     const rangeWrap = document.createElement('div');
     const min = document.createElement('input');
     const max = document.createElement('input');
@@ -961,6 +1029,7 @@ function renderStep(){
     sync();
   } else {
     const grid = document.createElement('div'); grid.className = 'ob-grid';
+    const existing = ob.answers[step.id];
     (step.options||[]).forEach(opt=>{
       const chip = document.createElement('button');
       chip.type='button'; chip.className='ob-chip';
@@ -980,6 +1049,12 @@ function renderStep(){
         }
         updateNextButton();
       });
+      if(step.multi && Array.isArray(existing) && existing.includes(opt)){
+        chip.setAttribute('aria-pressed','true');
+      }
+      if(!step.multi && existing === opt){
+        chip.setAttribute('aria-pressed','true');
+      }
       grid.appendChild(chip);
     });
     el.appendChild(grid);
@@ -999,7 +1074,16 @@ function updateNextButton(){
   const step = ob.steps[ob.step];
   const next = document.getElementById('obNext');
   const ans = ob.answers[step.id];
-  const hasAns = step.range ? Array.isArray(ans) && ans.length===2 : (step.multi ? (ans && ans.length>0) : !!ans);
+  let hasAns = false;
+  if(step.range){
+    hasAns = Array.isArray(ans) && ans.length===2;
+  } else if(step.single){
+    hasAns = ans !== undefined && ans !== null && ans !== '';
+  } else if(step.multi){
+    hasAns = Array.isArray(ans) && ans.length>0;
+  } else {
+    hasAns = !!ans;
+  }
   if(next){
     next.textContent = (ob.step === ob.steps.length-1) ? 'Finish' : 'Next';
     next.disabled = !hasAns;
@@ -1068,42 +1152,71 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const obKey = 'sexySlots.onboarding.v3';
   const ansKey = 'sexySlots.answers.v3';
 
-  window.applyAnswersToFilters = function(collected){
-    const cats = Array.isArray(collected.categories) ? Array.from(new Set(collected.categories.map(String))) : [];
-    const hasOral = cats.map(s=>s.toLowerCase()).includes('oral');
+  function syncChips(){
+    const cats = window.filters?.categories || [];
+    const hasOral = !!window.filters?.oral;
+    const catTxt = cats.length ? cats.join(', ') : 'All';
+    const diffTxt = `≤ ${window.filters?.difficultyMax ?? 5}`;
+    const timerTxt = window.filters?.timerMode === 'increment' ? 'Incremental' : 'Off';
 
-    window.filters = Object.assign(window.filters||{}, {
+    const catChip = document.querySelector('[data-chip="category"]');
+    if (catChip) catChip.textContent = catTxt;
+    const diffChip = document.querySelector('[data-chip="difficulty"]');
+    if (diffChip) diffChip.textContent = diffTxt;
+    const timerChip = document.querySelector('[data-chip="timer"]');
+    if (timerChip) timerChip.textContent = timerTxt;
+    const oralChip = document.querySelector('[data-chip="oral"]');
+    if (oralChip) oralChip.textContent = hasOral ? 'ON' : 'OFF';
+    const oralTgl = document.querySelector('[data-toggle="oral"]');
+    if (oralTgl) oralTgl.setAttribute('data-state', hasOral ? 'on' : 'off');
+  }
+
+  window.applyAnswersToFilters = function(collected){
+    const cats = Array.isArray(collected.categories)
+      ? collected.categories.reduce((acc, raw)=>{
+          const name = String(raw ?? '').trim();
+          if(!name) return acc;
+          const key = name.toLowerCase();
+          if(!acc._seen.has(key)){ acc._seen.add(key); acc.list.push(name); }
+          return acc;
+        }, {list:[], _seen:new Set()}).list
+      : [];
+    const hasOral = cats.map(c=>String(c).toLowerCase()).some(s=>s.includes('oral'));
+
+    const next = {
       level: collected.level || null,
       categories: cats,
-      difficultyMax: collected.difficultyMax ?? 5,
+      difficultyMax: +collected.difficultyMax || 5,
       bdsm: !!collected.bdsm,
       timerMode: collected.timerMode || 'off',
       oral: hasOral
-    });
+    };
+
+    window.filters = Object.assign(window.filters || {}, next);
+
+    if (typeof window.state === 'object'){
+      const oralOnlySelected = cats.length>0 && cats.every(c=>String(c).toLowerCase().includes('oral'));
+      state.oralOnly = oralOnlySelected;
+      state.category = (!oralOnlySelected && cats.length === 1) ? cats[0] : 'All';
+      saveState();
+    }
+
+    syncChips();
 
     try {
       localStorage.setItem(obKey, 'done');
       localStorage.setItem(ansKey, JSON.stringify(window.filters));
     } catch(e){}
 
-    try {
-      const oralBtn = document.querySelector('[data-toggle="oral"]');
-      if (oralBtn) oralBtn.setAttribute('data-state', hasOral ? 'on' : 'off');
-      const oralChip = document.querySelector('[data-chip="oral"]');
-      if (oralChip) oralChip.textContent = hasOral ? 'ON' : 'OFF';
-
-      const catChip = document.querySelector('[data-chip="category"]');
-      if (catChip) catChip.textContent = (cats.length ? cats.join(', ') : 'All');
-
-      const diffChip = document.querySelector('[data-chip="difficulty"]');
-      if (diffChip) diffChip.textContent = `≤ ${window.filters.difficultyMax}`;
-
-      const timerChip = document.querySelector('[data-chip="timer"]');
-      if (timerChip) timerChip.textContent = (window.filters.timerMode==='increment' ? 'Incremental' : 'Off');
-    } catch(e){ console.warn('UI sync skipped', e); }
-
     if (typeof window.rebuildSpinPool === 'function') window.rebuildSpinPool();
     window.dispatchEvent(new CustomEvent('filters:changed', { detail: window.filters }));
+  };
+
+  window.syncFilterChips = syncChips;
+
+  window.mergeFilters = function(partial={}){
+    const merged = Object.assign({}, window.filters || {}, partial);
+    applyAnswersToFilters(merged);
   };
 
   window.runOnboardingSetup = function(){
@@ -1114,11 +1227,18 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 <script>
 (function(){
-  // Route any old progress calls to onboarding bar; suppress legacy UI
-  window.setProgress = window.updateProgress = window.setBootProgress = p => { try{ setBootstrapProgress(p); }catch(e){} };
-  window.showLoader = function(){};
-  window.hideLoader = function(){};
-  ['importBar','importProgress','loader','progressBar'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
+  // Block any legacy calls from ever showing the overlay
+  const hideLegacy = () => {
+    ['importOverlay','importBar','importProgress','loader','progressBar']
+      .forEach(id => { const el=document.getElementById(id); if (el){ el.style.display='none'; el.classList.add('legacy-loader'); }});
+    document.querySelectorAll('.import-overlay,.import-progress,.boot-progress,.loading-overlay')
+      .forEach(el => { el.style.display='none'; el.classList.add('legacy-loader'); });
+  };
+  window.showLoader = function(){ hideLegacy(); };
+  window.hideLoader = function(){ hideLegacy(); };
+  window.setProgress = window.updateProgress = window.setBootProgress = function(p){ try{ setBootstrapProgress(p); }catch(e){} hideLegacy(); };
+  hideLegacy();
+  document.addEventListener('DOMContentLoaded', hideLegacy);
 })();
 </script>
 </body>
