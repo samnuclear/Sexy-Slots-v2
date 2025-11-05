@@ -1,8 +1,9 @@
-name: Pages — Production (dev → root)
+name: Pages - Deploy (dev/onboarding → root)
+
 on:
   push:
-    branches: ['dev']
-  workflow_dispatch:  # allow manual "Run workflow" on dev
+    branches: ['dev/onboarding']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -10,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages-production
+  group: 'pages-deploy'
   cancel-in-progress: true
 
 jobs:
@@ -32,7 +33,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        name: Deploy to Pages (production)
+        name: Deploy to Pages
         uses: actions/deploy-pages@v4
       - name: Show Live URL
-        run: echo "Live URL: ${{ steps.deployment.outputs.page_url }}"
+        run: |
+          echo "Live URL: ${{ steps.deployment.outputs.page_url }}"
