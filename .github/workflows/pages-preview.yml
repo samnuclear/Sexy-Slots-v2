@@ -1,4 +1,4 @@
-name: Pages — Preview (dev/feature/PRs)
+name: Preview — gh-pages subdir
 on:
   push:
     branches: ['dev', 'dev/**', 'feature/**']
@@ -8,56 +8,40 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages-preview-${{ github.head_ref || github.ref_name }}
+  group: gh-pages-preview-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Upload artifact for Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: '.'
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: preview
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        name: Deploy to Pages (preview)
-        uses: actions/deploy-pages@v4
+      - name: Compute preview dir (hyphenate branch)
+        id: prep
+        run: |
+          BR="${{ github.head_ref || github.ref_name }}"
+          SAFE="${BR//\//-}"
+          echo "SAFE_BRANCH=$SAFE" >> $GITHUB_OUTPUT
+          echo "URL=https://samnuclear.github.io/Sexy-Slots-v2/previews/${SAFE}/" >> $GITHUB_OUTPUT
+
+      - name: Stage static files
+        run: |
+          mkdir -p public
+          rsync -a --delete ./ public/
+          touch public/.nojekyll
+
+      - name: Deploy preview to gh-pages /previews/{branch}
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          preview: true
+          personal_token: ${{ secrets.GH_PAGES_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./public
+          destination_dir: previews/${{ steps.prep.outputs.SAFE_BRANCH }}
+          keep_files: true
 
       - name: Show Preview URL
-        run: |
-          echo "is_preview=${{ steps.deployment.outputs.preview_url != '' }}"
-          echo "Preview URL: ${{ steps.deployment.outputs.page_url }}"
-
-      - name: Comment Preview URL on PR
-        if: ${{ github.event.pull_request.number }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = context.payload.pull_request.number;
-            const url = '${{ steps.deployment.outputs.page_url }}';
-            const body = `🔗 **Preview is live:** ${url}`;
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo, issue_number: pr
-            });
-            const bot = comments.find(c => c.user.type === 'Bot' && c.body.includes('Preview is live:'));
-            if (bot) {
-              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: bot.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: pr, body });
-            }
+        run: echo "Preview URL: ${{ steps.prep.outputs.URL }}"
