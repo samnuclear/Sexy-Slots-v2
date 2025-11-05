@@ -149,8 +149,8 @@ header.rig .title{
 .ob-ghost{ background:#232323; color:#eee; }
 .ob-skip{ margin:8px auto 0; display:block; background:none; border:none; color:#aaa; text-decoration:underline; }
 @media (hover:hover){ .ob-chip:hover{ border-color:#3a3a3a; } }
-/* Hide legacy loader UI */
-.legacy-loader, #importBar, #importProgress, #loader, #progressBar, .import-progress, .boot-progress { display: none !important; }
+/* Hide legacy loader UI (superseded by onboarding) */
+.legacy-loader, #importBar, #importProgress, #loader, #progressBar, .import-progress, .boot-progress { display:none !important; }
 </style>
 </head>
 <body>
@@ -186,13 +186,13 @@ header.rig .title{
 </header>
 
 <div class="controls">
-  <button class="ctrl" id="oralCtrl">Oral <span class="pill" id="oralPill">OFF</span></button>
-  <button class="ctrl" id="catCtrl">Category <span class="pill" id="catPill">All</span></button>
-  <button class="ctrl" id="timeCtrl">Timer <span class="pill" id="timePill">Off</span></button>
+  <button class="ctrl" id="oralCtrl" data-toggle="oral">Oral <span class="pill" id="oralPill" data-chip="oral">OFF</span></button>
+  <button class="ctrl" id="catCtrl">Category <span class="pill" id="catPill" data-chip="category">All</span></button>
+  <button class="ctrl" id="timeCtrl">Timer <span class="pill" id="timePill" data-chip="timer">Off</span></button>
 </div>
 
 <div class="controls">
-  <button class="ctrl" id="diffCtrl">Difficulty <span class="pill" id="diffPill">All</span></button>
+  <button class="ctrl" id="diffCtrl">Difficulty <span class="pill" id="diffPill" data-chip="difficulty">All</span></button>
   <button class="ctrl" id="heroCtrl">Her-O <span class="pill" id="heroPill">All</span></button>
   <button class="ctrl" id="hisoCtrl">His-O <span class="pill" id="hisoPill">All</span></button>
 </div>
@@ -300,6 +300,9 @@ header.rig .title{
     const el = document.getElementById('buildVer');
     if (el) el.textContent = window.APP_VERSION;
   });
+</script>
+<script>console.log('[SexySlots] Build', window.APP_VERSION||'dev');</script>
+<script>
   // Unregister SW + bust caches when ?nocache=1 is present
   (function(){
     const qp = new URLSearchParams(location.search);
@@ -534,78 +537,102 @@ function poolNow(){
   return filtered;
 }
 
+// Filters handled via helper script below
 (function(){
-  const DBG = true;
-  const log = (...a)=>{ if(DBG) console.log('[SexySlots]', ...a); };
+  // Normalizers
+  const norm = s => (s||'').toString().trim().toLowerCase();
+  const aliasMap = {
+    oral: ['oral for her','oral for him','69'],
+    doggy: ['rear entry'],
+    riding: ['woman-on-top','sitting'],
+    anal: ['deep penetration'],
+    bdsm: ['bdsm','bdsm for lovers'],
+    missionary: ['missionary'],
+    standing: ['standing']
+  };
 
-  function norm(s){ return (s||'').toString().trim().toLowerCase(); }
-  function inSelectedCategory(rowCat, selected){
-    if(!selected || selected.length===0) return true; // no selection => allow all
-    const c = norm(rowCat);
-    return selected.some(x => norm(x) === c);
-  }
+  // Global filters structure
+  window.filters = window.filters || { level:null, categories:[], difficultyMax:5, bdsm:false, timerMode:'off', oral:false };
 
-  window.applySexySlotsFilters = function(rows, f){
-    const rowsList = Array.isArray(rows) ? rows : [];
-    const filt = f || window.filters || {};
-    const maxDiff = +filt.difficultyMax || 5;
-    const wantCats = Array.isArray(filt.categories) ? filt.categories : [];
-    const allowBDSM = !!filt.bdsm;
+  // Apply filters to raw rows
+  window.applySexySlotsFilters = function(rows, f=window.filters){
+    const maxDiff = +f.difficultyMax || 5;
+    const wantCats = (f.categories||[]).map(norm);
+    const wantSet = new Set(wantCats);
+    const allowBDSM = !!f.bdsm;
 
-    let out = rowsList.filter(r=>{
-      const rowCat = r.category ?? r.Category ?? r.cat ?? '';
-      const rowDiff = +(r.difficulty ?? r.Difficulty ?? 1);
+    const matchesCategory = cat => {
+      if (!wantSet.size) return true;
+      if (wantSet.has('all')) return true;
+      if (wantSet.has(cat)) return true;
+      for (const [key, aliases] of Object.entries(aliasMap)){
+        if (wantSet.has(key) && aliases.includes(cat)) return true;
+      }
+      return false;
+    };
 
-      if(isFinite(rowDiff) && rowDiff > maxDiff) return false;
-      if(!inSelectedCategory(rowCat, wantCats)) return false;
-      if(!allowBDSM && norm(rowCat) === 'bdsm') return false;
-      if(String(r.exclude||'').toLowerCase() === 'true') return false;
+    const isBDSMCategory = cat => {
+      if (!cat) return false;
+      if (cat === 'bdsm' || cat.startsWith('bdsm')) return true;
+      return aliasMap.bdsm.includes(cat);
+    };
+
+    let out = (Array.isArray(rows)?rows:[]).filter(r=>{
+      const cat = norm(r.category ?? r.Category ?? '');
+      const diff = +(r.difficulty ?? r.Difficulty ?? 1);
+
+      if (Number.isFinite(diff) && diff > maxDiff) return false;
+
+      if (!matchesCategory(cat)) return false;
+      if (!allowBDSM && isBDSMCategory(cat)) return false;
+
+      if (norm(r.exclude)==='true') return false;
 
       return true;
     });
 
-    if(out.length === 0){
-      log('Filter empty; falling back to ALL', {filt});
-      out = rowsList.slice();
-    } else {
-      log('Filter result', { size: out.length, maxDiff, wantCats, allowBDSM });
-    }
+    if (!out.length) out = (Array.isArray(rows)?rows.slice():[]);
     return out;
   };
 
-  // Pool rebuild helper, used by onboarding finish and settings changes
-  if(!window.rebuildSpinPool){
+  // Build/refresh current pool
+  if (!window.rebuildSpinPool) {
     window.rebuildSpinPool = function(){
-      try{
-        const all = (window.positions || window.allPositions || basePool() || Object.values(meta||{}));
-        const filtered = window.applySexySlotsFilters(all, window.filters);
-        window.currentPool = filtered;
-        log('Pool rebuilt', { total: all.length, filtered: filtered.length });
-        window.dispatchEvent(new CustomEvent('pool:rebuilt', { detail: { size: filtered.length }}));
-      }catch(e){ console.error('rebuildSpinPool failed', e); }
+      const all = (window.positions || window.allPositions || basePool() || Object.values(meta||{}));
+      window.currentPool = window.applySexySlotsFilters(all, window.filters);
+      window.dispatchEvent(new CustomEvent('pool:rebuilt', { detail:{ size: window.currentPool.length }}));
+      console.log('[SexySlots] Pool rebuilt:', { total: all.length, filtered: window.currentPool.length, filters: window.filters });
     };
   }
+
+  // Ensure spin() uses filtered pool
+  const _spin = window.spin;
+  window.spin = function(...args){
+    try {
+      if (!window.currentPool || !window.currentPool.length) window.rebuildSpinPool();
+      window.__spinPool = window.currentPool && window.currentPool.length ? window.currentPool : (window.positions||[]);
+    } catch(e){ console.warn('spin pool fallback', e); }
+    return _spin ? _spin.apply(this, args) : undefined;
+  };
 })();
 function weighted(arr){ const sum=arr.reduce((a,b)=>a+(b.weight|0),0); let r=Math.random()*sum; for(const x of arr){ r-=(x.weight|0); if(r<=0) return x; } return arr[0]; }
 function randOther(pool,notId){ const cand=pool.filter(m=>m.id!==notId); return (cand[Math.floor(Math.random()*cand.length)]||pool[0]||{id:notId}).id; }
 
 function spin(){
   const all = (window.positions || window.allPositions || basePool());
-  let pool = (window.currentPool && window.currentPool.length)
-    ? window.currentPool
-    : (typeof window.applySexySlotsFilters === 'function'
-        ? window.applySexySlotsFilters(all, window.filters)
-        : Array.isArray(all) ? all.slice() : []);
-  if(!pool || pool.length === 0){
-    pool = Array.isArray(all) ? all.slice() : [];
-  }
-  if(!pool || pool.length === 0){toast("No images match filters");return;}
-  window.currentPool = pool;
-  let chosen; if(state.rig && state.flows[state.flowIndex].length){ const id=state.flows[state.flowIndex].shift(); chosen=meta[id]; saveState(); renderFlowList(); } else { chosen=weighted(pool); }
+  const allRows = Array.isArray(all) ? all : [];
+  const pool = typeof window.applySexySlotsFilters === 'function'
+    ? window.applySexySlotsFilters(allRows, window.filters)
+    : allRows.slice();
+  const safePool = pool && pool.length ? pool : allRows.slice();
+  if(!safePool.length){ toast('No images available'); return; }
+  window.currentPool = safePool;
+  const workingPool = safePool;
+  let chosen; if(state.rig && state.flows[state.flowIndex].length){ const id=state.flows[state.flowIndex].shift(); chosen=meta[id]; saveState(); renderFlowList(); } else { chosen=weighted(workingPool); }
 
   spinning=true; $("#spin").disabled=true;
   const reels=[$("#reel1"),$("#reel2"),$("#reel3")];
-  const dur=[5400,6000,5700]; const ids=pool.map(m=>m.id); if(!ids.length) ids.push(chosen.id);
+  const dur=[5400,6000,5700]; const ids=workingPool.map(m=>m.id); if(!ids.length) ids.push(chosen.id);
 
   // Ensure side reels are distinct: exclude center first, then pick left and right from remaining; fallback gracefully if pool is too small.
   const centerId=chosen.id;
@@ -614,11 +641,11 @@ function spin(){
   if(leftId!==undefined){
     sidePool=sidePool.filter(id=>id!==leftId);
   }else{
-    leftId=randOther(pool,centerId);
+    leftId=randOther(workingPool,centerId);
   }
   let rightId=sidePool.length?sidePool[Math.floor(Math.random()*sidePool.length)]:undefined;
   if(rightId===undefined){
-    rightId=randOther(pool.filter(m=>m.id!==leftId),centerId);
+    rightId=randOther(workingPool.filter(m=>m.id!==leftId),centerId);
   }
   const stopIds=[leftId,centerId,rightId];
   reels.forEach(r=>r.classList.add("blur"));
@@ -848,36 +875,37 @@ const nextFrame=()=>new Promise(r=>requestAnimationFrame(r));
   $("#diffPill").textContent=state.difficulty || 'All';
   $("#heroPill").textContent=state.hero || 'All';
   $("#hisoPill").textContent=state.hiso || 'All';
-  $("#timePill").textContent=state.timerMin? (state.timerMin+'m') : 'Off';
+  $("#timePill").textContent = state.timerMin>0 ? 'Incremental' : 'Off';
 })();
 </script>
 <script>
 // ---- Onboarding Config ------------------------------------------------------
-const obKey = 'sexySlots.onboarding.' + window.OB_VERSION;
+const obStorageKey = 'sexySlots.onboarding.' + window.OB_VERSION;
 const obAnswersKey = 'sexySlots.answers.' + window.OB_VERSION;
 
 const ob = {
   step: 0,
   steps: [
-    { id: 'level', title: "What's your level?", multi: false,
-      options: ['Beginner', 'Intermediate', 'Advanced'],
-      map: (val) => ({ level: val }) },
+    { id: 'level', title: "What's your level?", multi:false,
+      options:['Beginner','Intermediate','Advanced'],
+      map: v => ({ level:v }) },
 
-    { id: 'categories', title: "Pick categories you like", multi: true,
-      options: ['Oral','Missionary','Doggy','Standing','Riding','Anal'],
-      map: (vals) => ({ categories: vals||[] }) },
+    { id: 'categories', title: "Pick categories you like", multi:true,
+      // NOTE: no "BDSM light" here
+      options:['Oral','Missionary','Doggy','Standing','Riding','Anal','BDSM'],
+      map: vals => ({ categories: vals || [] }) },
 
-    { id: 'difficultyMax', title: "Max difficulty you want", range: true,
-      min: 1, max: 5, defMin: 1, defMax: 3,
-      map: (minmax) => ({ difficultyMax: Array.isArray(minmax) ? +minmax[1] : +minmax }) },
+    { id: 'difficultyMax', title: "Max difficulty you want", range:true,
+      min:1, max:5, defMin:1, defMax:3,
+      map: mm => ({ difficultyMax: Array.isArray(mm) ? +mm[1] : +mm }) },
 
-    { id: 'bdsm', title: "Include BDSM positions?", multi: false,
-      options: ['No','Yes'],
-      map: (val) => ({ bdsm: (val === 'Yes') }) },
+    { id: 'bdsm', title: "Include BDSM positions?", multi:false,
+      options:['No','Yes'],
+      map: v => ({ bdsm: v==='Yes' }) },
 
-    { id: 'timer', title: "Use the timer bar?", multi: false,
-      options: ['Off','Incremental'],
-      map: (val) => ({ timerMode: (val === 'Incremental') ? 'increment' : 'off' }) }
+    { id: 'timer', title: "Use the timer bar?", multi:false,
+      options:['Off','Incremental'],
+      map: v => ({ timerMode: v==='Incremental' ? 'increment' : 'off' }) }
   ],
   answers: {},
   loadingPct: 0
@@ -894,7 +922,7 @@ function setBootstrapProgress(p){
 
 // ---- Onboarding render ------------------------------------------------------
 function showOnboardingIfNeeded(){
-  try { if(localStorage.getItem(obKey) === 'done') return; } catch(e){}
+  try { if(localStorage.getItem(obStorageKey) === 'done') return; } catch(e){}
   const root = document.getElementById('onboard');
   if(!root) return;
   root.classList.remove('hidden');
@@ -978,34 +1006,15 @@ function updateNextButton(){
   }
 }
 
-function applyAnswersToFilters(){
-  const collected = ob.steps.reduce((acc, s)=>{
+function collectOnboardingAnswers(){
+  return ob.steps.reduce((acc, s)=>{
     const raw = ob.answers[s.id];
     const mapped = s.map ? s.map(raw) : {};
     return Object.assign(acc, mapped);
   }, {});
-
-  window.filters = Object.assign(window.filters || {}, {
-    level: collected.level,
-    categories: (collected.categories||[]),
-    difficultyMax: collected.difficultyMax ?? 5,
-    bdsm: collected.bdsm ?? false,
-    timerMode: collected.timerMode || 'off'
-  });
-
-  try{
-    localStorage.setItem(obAnswersKey, JSON.stringify(window.filters));
-    localStorage.setItem('sexySlots.onboarding.' + window.OB_VERSION, 'done');
-  }catch(e){}
-
-  state.timerMin = window.filters.timerMode === 'increment' ? 1 : 0;
-  saveState();
-  renderSettings();
-  renderWeights();
-  $("#timePill").textContent = state.timerMin ? (state.timerMin+'m') : 'Off';
 }
 
-function closeOnboarding(){
+function closeOnboardingOverlay(){
   const el = document.getElementById('onboard');
   if(el) el.classList.add('hidden');
 }
@@ -1018,14 +1027,19 @@ function setupOnboardingEvents(){
   if(next) next.addEventListener('click', ()=>{
     const atLast = (ob.step === ob.steps.length-1);
     if(atLast){
-      applyAnswersToFilters();
-      if (typeof window.rebuildSpinPool === 'function') { window.rebuildSpinPool(); }
-      window.dispatchEvent(new CustomEvent('filters:changed', { detail: window.filters }));
-      closeOnboarding();
+      const collected = collectOnboardingAnswers();
+      applyAnswersToFilters(collected);
+      state.timerMin = window.filters.timerMode === 'increment' ? 1 : 0;
+      saveState();
+      renderSettings();
+      renderWeights();
+      const timePill = document.getElementById('timePill');
+      if(timePill) timePill.textContent = window.filters.timerMode === 'increment' ? 'Incremental' : 'Off';
+      closeOnboardingOverlay();
     }
     else { ob.step++; renderStep(); }
   });
-  if(skip) skip.addEventListener('click', ()=> closeOnboarding());
+  if(skip) skip.addEventListener('click', ()=> closeOnboardingOverlay());
 }
 
 // ---- Init -------------------------------------------------------------------
@@ -1033,7 +1047,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
   setupOnboardingEvents();
   try {
     const saved = JSON.parse(localStorage.getItem(obAnswersKey)||'null');
-    if(saved){ window.filters = Object.assign(window.filters||{}, saved); }
+    if(saved && typeof window.applyAnswersToFilters === 'function'){
+      applyAnswersToFilters(saved);
+    }
   } catch(e){}
   showOnboardingIfNeeded();
 
@@ -1042,28 +1058,67 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const btn = document.getElementById('runOnboardBtn');
   if(btn){
     btn.addEventListener('click', ()=>{
-      try {
-        localStorage.removeItem('sexySlots.onboarding.v1');
-        localStorage.removeItem('sexySlots.answers.v1');
-        localStorage.removeItem(obKey);
-        localStorage.removeItem(obAnswersKey);
-      } catch(e){}
-      const ob = document.getElementById('onboard');
-      if(ob) ob.classList.remove('hidden');
+      if(typeof window.runOnboardingSetup === 'function'){ window.runOnboardingSetup(); }
     });
   }
 });
 </script>
 <script>
 (function(){
-  window.setProgress = window.updateProgress = window.setBootProgress = function(p){
-    try{ setBootstrapProgress(p); }catch(e){}
+  const obKey = 'sexySlots.onboarding.v3';
+  const ansKey = 'sexySlots.answers.v3';
+
+  window.applyAnswersToFilters = function(collected){
+    const cats = Array.isArray(collected.categories) ? Array.from(new Set(collected.categories.map(String))) : [];
+    const hasOral = cats.map(s=>s.toLowerCase()).includes('oral');
+
+    window.filters = Object.assign(window.filters||{}, {
+      level: collected.level || null,
+      categories: cats,
+      difficultyMax: collected.difficultyMax ?? 5,
+      bdsm: !!collected.bdsm,
+      timerMode: collected.timerMode || 'off',
+      oral: hasOral
+    });
+
+    try {
+      localStorage.setItem(obKey, 'done');
+      localStorage.setItem(ansKey, JSON.stringify(window.filters));
+    } catch(e){}
+
+    try {
+      const oralBtn = document.querySelector('[data-toggle="oral"]');
+      if (oralBtn) oralBtn.setAttribute('data-state', hasOral ? 'on' : 'off');
+      const oralChip = document.querySelector('[data-chip="oral"]');
+      if (oralChip) oralChip.textContent = hasOral ? 'ON' : 'OFF';
+
+      const catChip = document.querySelector('[data-chip="category"]');
+      if (catChip) catChip.textContent = (cats.length ? cats.join(', ') : 'All');
+
+      const diffChip = document.querySelector('[data-chip="difficulty"]');
+      if (diffChip) diffChip.textContent = `≤ ${window.filters.difficultyMax}`;
+
+      const timerChip = document.querySelector('[data-chip="timer"]');
+      if (timerChip) timerChip.textContent = (window.filters.timerMode==='increment' ? 'Incremental' : 'Off');
+    } catch(e){ console.warn('UI sync skipped', e); }
+
+    if (typeof window.rebuildSpinPool === 'function') window.rebuildSpinPool();
+    window.dispatchEvent(new CustomEvent('filters:changed', { detail: window.filters }));
   };
+
+  window.runOnboardingSetup = function(){
+    try { localStorage.removeItem(obKey); localStorage.removeItem(ansKey); } catch(e){}
+    document.getElementById('onboard')?.classList.remove('hidden');
+  };
+})();
+</script>
+<script>
+(function(){
+  // Route any old progress calls to onboarding bar; suppress legacy UI
+  window.setProgress = window.updateProgress = window.setBootProgress = p => { try{ setBootstrapProgress(p); }catch(e){} };
   window.showLoader = function(){};
   window.hideLoader = function(){};
-  ['importBar','importProgress','loader','progressBar'].forEach(id=>{
-    const el = document.getElementById(id); if(el) el.style.display='none';
-  });
+  ['importBar','importProgress','loader','progressBar'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
 })();
 </script>
 </body>
