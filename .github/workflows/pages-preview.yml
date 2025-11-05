@@ -1,6 +1,4 @@
 name: Pages — Preview (dev/feature/PRs)
-
-# Triggers: pushes to dev/feature and PRs; manual run supported
 on:
   push:
     branches: ['dev', 'dev/**', 'feature/**']
@@ -23,7 +21,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3
         with:
@@ -44,4 +41,23 @@ jobs:
 
       - name: Show Preview URL
         run: |
+          echo "is_preview=${{ steps.deployment.outputs.preview_url != '' }}"
           echo "Preview URL: ${{ steps.deployment.outputs.page_url }}"
+
+      - name: Comment Preview URL on PR
+        if: ${{ github.event.pull_request.number }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request.number;
+            const url = '${{ steps.deployment.outputs.page_url }}';
+            const body = `🔗 **Preview is live:** ${url}`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: pr
+            });
+            const bot = comments.find(c => c.user.type === 'Bot' && c.body.includes('Preview is live:'));
+            if (bot) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: bot.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: pr, body });
+            }
